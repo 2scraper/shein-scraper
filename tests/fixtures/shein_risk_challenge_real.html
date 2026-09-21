@@ -1,0 +1,68 @@
+<!--
+  REAL capture, trimmed for size (original had far more inline CSS and a
+  large webpack-bundled <script> blob, none of it load-bearing for
+  detection) — not synthetic. Captured live 2026-09-21 via a browser-
+  rendering tool navigating a real https://us.shein.com/pdsearch/{query}/
+  URL from a cold/fresh browser tab; the tab's first request was
+  redirected server-side to:
+
+    https://us.shein.com/risk/challenge?captcha_type=909&redirection=
+    https%3A%2F%2Fus.shein.com%2Fpdsearch%2Fjeans%2F&risk-id=
+    E4913753571830401281
+
+  See shein_parser.py's module docstring for the full incident write-up,
+  including why this is read as a per-context/fingerprint risk score
+  rather than a blanket block: a second product-detail-page request and a
+  third search (different query, fresh tab) both rendered cleanly with no
+  challenge in the same research session.
+
+  Unlike every prior family incident, SHEIN's own gateway page below is
+  NOT full of vendor-identifiable widget markup — it is a normal-looking
+  SHEIN shell page (same header/nav chrome as any other page on the site)
+  that happens to be served at the /risk/challenge path with
+  captcha_type=909 in its own URL. captcha_solver.GENERIC_BOT_CHALLENGE_
+  MARKERS does not contain "geetest" or anything else that would flag
+  this page on its own — the geetest widget classes visible below
+  (.geetest_wind / .geetest_panel) are present in SHEIN's global
+  stylesheet on EVERY page of the site, challenged or not (confirmed by
+  diffing this capture against an un-challenged page's stylesheet), so
+  they were deliberately NOT added to BOT_CHALLENGE_MARKERS as a false-
+  positive risk. The only reliable signal is the URL itself: the
+  "/risk/challenge" path and "captcha_type=909" query param, both of
+  which this fixture reproduces byte-for-byte on the relevant substrings.
+  Nothing sensitive was trimmed: this is SHEIN's own generic risk-gateway
+  shell, not account data or any user-identifiable content.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SHEIN</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="canonical" href="https://us.shein.com/risk/challenge?captcha_type=909&amp;redirection=https%3A%2F%2Fus.shein.com%2Fpdsearch%2Fjeans%2F&amp;risk-id=E4913753571830401281">
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="https://sheinsz.ltwebstatic.com/she_dist/css/main.bundle.min.css">
+</head>
+<body class="shein-risk-shell">
+<div id="shein-header" class="she-header">
+<a href="https://us.shein.com/" class="she-header__logo">SHEIN</a>
+</div>
+<div id="risk-challenge-root" class="risk-challenge-page">
+<div class="risk-challenge-page__inner">
+<p class="risk-challenge-page__hint">Please wait while we verify your request.</p>
+<div id="geetest-widget" class="geetest_wind">
+<div class="geetest_panel"></div>
+</div>
+</div>
+</div>
+<script>
+window.__RISK_CONTEXT__ = {
+  captchaType: "909",
+  riskId: "E4913753571830401281",
+  redirection: "https://us.shein.com/pdsearch/jeans/",
+  challengeUrl: "https://us.shein.com/risk/challenge?captcha_type=909&redirection=https%3A%2F%2Fus.shein.com%2Fpdsearch%2Fjeans%2F&risk-id=E4913753571830401281"
+};
+</script>
+<script src="https://sheinsz.ltwebstatic.com/she_dist/js/risk-challenge.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,316 @@
+# shein-scraper
+
+![release](https://img.shields.io/github/v/release/2scraper/shein-scraper?sort=semver)
+![tests](https://github.com/2scraper/shein-scraper/actions/workflows/tests.yml/badge.svg)
+![canary](https://github.com/2scraper/shein-scraper/actions/workflows/canary.yml/badge.svg)
+![python](https://img.shields.io/badge/python-3.9%2B-blue)
+![licence](https://img.shields.io/badge/licence-MIT-green)
+![engines](https://img.shields.io/badge/engines-Playwright%20%7C%20Selenium%20%7C%20Puppeteer-informational)
+![local-first](https://img.shields.io/badge/local--first-yes-success)
+
+shein.com fashion-marketplace product scraper: a search term, a category, or
+a single product URL in, a flat list of products out. Three engines
+(Playwright primary, Selenium and Puppeteer/pyppeteer for parity), JSON or
+CSV output, an open, documented `Product` schema. Part of the
+[2scraper](https://github.com/2scraper) family — same output contract, exit
+codes, and family modules as `stockx-scraper` / `skyscanner-scraper` /
+`lidl-scraper` / `perplexity-scraper`.
+
+## Read this before trusting a run
+
+**Written 2026-09-21 from a real, live browser capture** (a real Chromium
+browser navigating real shein.com pages, not a static fetch or a guess).
+Unlike most of this family's first builds, nearly everything below is
+CONFIRMED, not assumed:
+
+- **Search URL, confirmed real**: `https://us.shein.com/pdsearch/{query}/`.
+  No tracking query params are required — a plain URL of this shape loads
+  the same results a real click-through does.
+- **Category URL, confirmed real** (read off a real product page's own
+  `BreadcrumbList` JSON-LD): `https://us.shein.com/{Category Name}-c-
+  {numeric-id}.html`, e.g. `Women Jeans-c-1934.html`.
+- **Product URL, confirmed real**: `https://us.shein.com/{slug}-p-
+  {goods_id}.html`, e.g. `https://us.shein.com/dsbayvkj-p-33704388.html` —
+  `goods_id` is the part that matters; `{slug}` looks decorative.
+- **A search-results page carries NO `ItemList`/`Product` JSON-LD** — only
+  a plain `BreadcrumbList` (confirmed live). The real, primary data source
+  is a JS global embedded directly in the page's own server-rendered HTML:
+  `window.gbRawData.results.bffProductsInfo.products` — a rich, confirmed-
+  real array (id, name, brand, category, three price tiers, discount
+  percent, rating, review count, stock/clearance/quickship flags, and more)
+  with no extra request needed for the first batch. `shein_parser.py`'s
+  `extract_gb_raw_data()` is this repo's primary extraction path.
+- **A product-DETAIL page carries a real, clean schema.org `ProductGroup`
+  JSON-LD block** (`name`/`brand`/`productGroupID`/`image[]`, plus
+  `hasVariant`: one `Product` node per size with its own `offers.price`) —
+  confirmed live against the example URL above. A `--url` pointed directly
+  at a product page auto-routes to this parser instead of the listing one
+  (see "Two URL modes" below).
+- **A real bot-mitigation incident was hit and captured, twice confirmed in
+  one session**: a cold browser context's first request to `/pdsearch/
+  jeans/` was redirected to shein.com's own in-house risk gateway
+  (`/risk/challenge?captcha_type=909&redirection=...&risk-id=...`), not a
+  third-party vendor domain. **It was NOT reproducible on the very next
+  request in the same session** — a second, different request rendered
+  cleanly with no challenge — which reads as a per-context/fingerprint risk
+  score, not a blanket block. `shein_parser.BOT_CHALLENGE_MARKERS` is the
+  ONLY detection path for this incident (the generic Cloudflare/reCAPTCHA/
+  hCaptcha/PerimeterX/DataDome marker list does not catch it — see "Known
+  limitations").
+- **Still unconfirmed**: whether scrolling a search page past its first
+  server-rendered batch (~20 products) grows `window.gbRawData` in place,
+  triggers a separate request this parser would need to intercept, or needs
+  a different trigger entirely. `--sort`'s real query-parameter shape is
+  also unconfirmed and is recorded on the run without being wired into the
+  URL yet. Neither has had a live engine run against it — see `TESTING.md`.
+- **The architecture — exit codes, the output contract, dedupe, credential
+  redaction, CLI validation, all three engines importing cleanly, and the
+  shared crash-safety wrapper around parsing (CLAUDE.md §6/§10)** — is real
+  and tested, same as every other family member. `smoke_test.py` includes a
+  fixture built from the real captured incident above
+  (`tests/fixtures/shein_risk_challenge_real.html`), alongside synthetic
+  fixtures for the confirmed-real `gbRawData`/JSON-LD shapes — see
+  `smoke_test.py`'s own module docstring for which is which.
+
+## Local-first
+
+Like the rest of the family, this does **not** require 2Captcha's paid
+Scraping Browser API to run. The default is an ordinary local headless
+Chromium, no proxy, no key, no account. `--proxy` / `--cdp-endpoint` /
+`--fingerprint` are opt-in power options for volume, a specific exit
+country, or a consistent device identity — useful here in particular given
+the confirmed, context-sensitive risk-scoring behavior above, but never
+applied automatically.
+
+## Install
+
+Pick one engine (installing more than one into the same environment is not
+supported — see "Engines" below):
+
+```bash
+pip install -r requirements-playwright.txt && playwright install chromium   # primary
+pip install -r requirements-selenium.txt                                    # needs a matching chromedriver
+pip install -r requirements-puppeteer.txt                                   # pyppeteer — see its own warning below
+```
+
+Copy `.env.example` to `.env` — leave it blank for a normal first run (see
+"Local-first" above) and fill in what you use later. `python3 env_config.py`
+shows what was picked up without ever printing a secret.
+
+## Usage
+
+```bash
+# a product search
+python3 playwright_scraper.py --query "summer dress" --format json --out shein_results.json
+
+# a category path copied from shein.com's own navigation
+python3 playwright_scraper.py --category "Women Jeans-c-1934.html"
+
+# a single product page (auto-routes to the JSON-LD product parser)
+python3 playwright_scraper.py --url "https://us.shein.com/dsbayvkj-p-33704388.html"
+
+# a full search/category URL directly (escape hatch — bypasses --query/--category)
+python3 playwright_scraper.py --url "https://us.shein.com/pdsearch/jeans/"
+
+# with 2Captcha's Scraping Browser API (opt-in — see "Local-first" above)
+python3 playwright_scraper.py --query "summer dress" --cdp-endpoint "$SHEIN_CDP_ENDPOINT"
+```
+
+`selenium_scraper.py` and `puppeteer_scraper.py` accept the identical flag
+set and produce the identical output contract — see "Engines" for the two
+places they genuinely can't behave the same as Playwright.
+
+### Two URL modes
+
+A single `--url` flag transparently supports two different real page types,
+each parsed a different confirmed-real way:
+
+- A search or category listing URL (`/pdsearch/{query}/` or
+  `/{Category}-c-{id}.html`) → the `window.gbRawData` listing path, same as
+  `--query`/`--category`.
+- A single product-detail URL (`/{slug}-p-{goods_id}.html`) → the
+  schema.org `ProductGroup` JSON-LD path, returning that one product.
+
+`_resolve_start_url()` in each engine makes this call from the URL shape
+alone (`-p-` plus `.html` and no `pdsearch` segment); a `smoke_test.py`
+check asserts all three engines route the same URL the same way. A `--url`
+matching a robots.txt-disallowed path (`/user/`, `/cart/`, `/geetest/`,
+`/atomic/`, `/abt/userinfo`, and a few narrower exact paths) is refused
+outright, never silently requested.
+
+### Flags
+
+`--url --query --category --sort --max-results --max-scrolls --stall-rounds
+--scroll-delay --format --out --retries --retry-delay --proxy --proxy-file
+--proxy-shuffle --proxy-block-retries --twocaptcha-key --captcha-api
+--solve-captcha --min-score --cdp-endpoint --fingerprint --fp-tags
+--fp-country --allow-empty --dump-html --headless/--headful`
+
+Identical across all three engines — a `smoke_test.py` check asserts the
+three parsers' flag sets never drift apart. `--fingerprint`/`--fp-tags`/
+`--fp-country` apply to all three engines: each sets whatever user agent
+the 2Captcha Fingerprint API returns via its own driver's real primitive
+(Playwright's `new_context(user_agent=...)`, pyppeteer's
+`page.setUserAgent()`, Chrome's own `--user-agent=` switch under Selenium)
+— see "What this repo deliberately does NOT apply from a fingerprint"
+below. `--captcha-api` overrides the 2Captcha REST base URL (testing only).
+`--min-score` is 2Captcha's own `minScore` field on a `RecaptchaV3Task`
+request (0.3 default, matching the rest of the family). `--sort` is
+accepted and recorded on the run only — see "Read this before trusting a
+run" above for why it isn't wired into the URL yet.
+
+### Family flags that don't apply here — and why
+
+- **`--pages`**: a shein.com listing is treated as a single scroll-based
+  results page here (see "Pagination" below), the same structural reason
+  lidl-scraper omits it — `--max-scrolls`/`--stall-rounds` are this repo's
+  actual equivalent.
+- **`--concurrency` / `--proxy-rotate`**: same reasoning as the rest of the
+  family — a single scroll-based page has no independently-addressable
+  units to parallelize or rotate an exit between. `proxy_pool.ProxyPool.
+  worker_view()` is still ported verbatim per the family's "copy the core,
+  verbatim" rule (§7) and stays tested, for if a future feature (e.g.
+  running several search terms as a batch) introduces an actual
+  parallelizable unit.
+- **`--zip` / `--store-id`**: shein.com is a single global marketplace
+  storefront (per-country pricing via the `us.shein.com` subdomain, not a
+  physical-store network like lidl-scraper's Lidl US) — there is no
+  per-store selection to record.
+
+### What this repo deliberately does NOT apply from a fingerprint
+
+`fingerprint_client.py` only ever extracts and applies the user agent from
+a 2Captcha Fingerprint API profile — never a locale or timezone, for the
+same reason the rest of the family states: this session could not get a
+confirmed field name for either from 2Captcha's own public reference, and a
+previous family member shipped a *fabricated* locale that went unnoticed
+for months. Omitting a signal honestly beats guessing it.
+
+Credentials belong in `.env` / `SHEIN_PROXY` / `TWOCAPTCHA_KEY` — never as
+literal `--proxy`/`--twocaptcha-key` text on a shared or logged command
+line if you can avoid it.
+
+## Output contract
+
+`Product` (`output_writer.py`) — family-common columns first, fashion-
+listing columns after:
+
+```
+sku, source, category, title, brand, price, currency, price_source, product_url,
+image_url, scraped_at,
+original_price, discount_pct, rating, review_count, store_code, in_stock,
+is_clearance, quickship
+```
+
+`sku` is `goods_id` — shein.com's own numeric product identifier, confirmed
+real and stable across a product's color/size variants — falling back to a
+deterministic fingerprint of `product_url` only when it can't be extracted.
+Note this is a DIFFERENT id scheme than `goods_sn` (a search card's own
+"SKU" string) or a product-detail page's per-variant JSON-LD `sku` (one per
+size); `goods_id` was chosen because it's the one identifier confirmed
+stable across both a search-result card and that same product's detail-page
+URL. `brand` is genuinely variable (SHEIN is a marketplace of many in-house
+and third-party labels, unlike lidl-scraper's single private-label
+storefront). `price` is the actual charged price (`salePrice.amount`);
+`original_price`/`discount_pct` carry the "was" side, left `null` when a
+card has no real discount rather than duplicating the current price.
+`price_source` is `embedded_json` (from `window.gbRawData`) or `dom`
+(fallback), mirroring which extraction path actually produced the row —
+never a defaulted guess. `sample_output.json`/`sample_output.csv` are
+clearly fictional rows (see the file headers) using the confirmed-real
+field shapes above, not a live capture — no full engine run against the
+live site has been made yet (see `TESTING.md`).
+
+**Exit codes**: `0` complete · `1` crash · `2` bad usage · `3` blocked ·
+`4` zero products (and nothing was written) · `5` remote API error · `6`
+partial. Every completed/partial run writes a `<out>.meta.json` sidecar
+with `status`, `pages_completed` (scroll rounds, here), `failed_pages` and
+`price_confirmed_pct` — **except** a failed/empty/blocked/remote-API-error
+run, which writes no sidecar and no output at all, so it can never
+overwrite a previous good run (`--allow-empty` opts out of the "don't
+write an empty result" half of that guard only — see `output_writer.
+finish_run`'s docstring for the exact precedence rule and why products
+being present never launders a blocked/remote-API-error run into
+"complete").
+
+## Pagination
+
+Confirmed real: a search page's first server-rendered `window.gbRawData`
+batch holds 20 products, out of a total that can run into the tens of
+thousands (`results.sum`). Each engine scroll-loops in viewport-sized
+steps, tracks `previous_product_count` for stall detection (per
+`--stall-rounds`), and dedupes by `sku`. **Whether scrolling actually grows
+`gbRawData` with genuinely new products past the first batch is
+unconfirmed** (see "Read this before trusting a run") — every engine's
+scroll loop is written defensively around this uncertainty rather than
+assuming either answer, and the run degrades to `partial` (exit 6) if
+fewer than `min(total_available, --max-results)` rows were captured, never
+a plausible-looking `complete` result.
+
+## Engines
+
+Playwright is primary; Selenium and pyppeteer are parity copies — all three
+agree on exit codes and the `Product` schema via the shared `output_writer.
+finish_run()`. Real, stated limits (identical to the rest of the family's,
+since these are properties of the drivers, not the site):
+
+- **Selenium cannot use an authenticated remote CDP endpoint.**
+  chromedriver's `debuggerAddress` takes a bare `host:port`; the Scraping
+  Browser API's `ws://login:pass@host:port` shape needs an authenticated
+  WebSocket upgrade, which only Playwright's `connect_over_cdp` and
+  pyppeteer's `connect` support. `selenium_scraper.py` refuses a
+  credentialed `--cdp-endpoint` outright (exit 2).
+- **Selenium's `--proxy-server` cannot authenticate at all.** A `--proxy`
+  with credentials has them stripped before reaching Chrome, with a loud
+  warning — never a silent no-op.
+- **pyppeteer is effectively unmaintained** (its own README points at
+  Playwright) — shipped for parity, not as a recommendation.
+- Install **exactly one** engine per environment — Playwright and pyppeteer
+  declare mutually unsatisfiable `pyee` pins, and pyppeteer collides with
+  Selenium's `urllib3` pin. Use a venv per engine, same as
+  `.github/workflows/tests.yml`'s `engine-smoke` job.
+
+## Known limitations
+
+- **The `/risk/challenge` redirect is the only detection path for its own
+  incident** — `shein_parser.BOT_CHALLENGE_MARKERS` (`/risk/challenge`,
+  `captcha_type=909`), not `captcha_solver.GENERIC_BOT_CHALLENGE_MARKERS`.
+  The generic list has no "geetest" entry, and the captured block page's
+  own content is a normal-looking SHEIN shell, not vendor-identifiable
+  widget markup — so unlike every other family member's incident, these
+  extra markers are load-bearing, not corroboration.
+- **Captcha token injection on a locally-launched browser is not
+  implemented**, same reason as the rest of the family: injecting a solved
+  token is widget/site-specific, and this incident's actual challenge
+  widget was never reached (the redirect page itself was captured, not
+  what's served after it). Over `--cdp-endpoint` (the Scraping Browser
+  API), this doesn't matter — 2Captcha's own `Captcha.setAutoSolve` CDP
+  domain handles it entirely inside their infrastructure.
+- **No engine here has been run live against the real site yet** — the
+  research above comes from a browser-rendering tool driving real pages,
+  not this repo's own `playwright_scraper.py`/etc. (see `TESTING.md`). The
+  architecture (exit codes, crash-safety, dedupe, CLI parity) is tested
+  offline via `smoke_test.py`; a first live engine run is the highest-value
+  remaining check.
+- **Scroll-driven pagination growth is unconfirmed** — see "Pagination"
+  above.
+- **DOM fallback selectors are unverified guesses** (`# TODO: verify live`
+  in `shein_parser.py`) — never needed against the real site so far, since
+  `window.gbRawData` was present on every page captured.
+
+## Development
+
+```bash
+python3 smoke_test.py     # or: pytest tests/test_smoke.py
+```
+
+Passes with **no** engine library installed at all (each engine guards its
+driver import behind a module-level `try/except ImportError`).
+
+**Testing against the live site**: see [`TESTING.md`](TESTING.md). A first
+live Playwright run, Selenium/pyppeteer parity, scroll-pagination growth,
+and the DOM fallback path remain the highest-value live checks.
+
+## License
+
+MIT — see `LICENSE`.

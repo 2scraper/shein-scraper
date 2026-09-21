@@ -1,0 +1,527 @@
+#!/usr/bin/env python3
+"""playwright_scraper.py — Playwright engine for the shein-scraper family
+member. Playwright is the primary engine (see selenium_scraper.py /
+puppeteer_scraper.py for parity copies — all three must agree on exit
+codes, run status and whether a run crashes or spends money — CLAUDE.md
+§4).
+
+**Local-first, same principle as every other family member** — this
+launches an ordinary local headless Chromium by default and does NOT
+require a 2Captcha Scraping Browser (`--cdp-endpoint`) session to run.
+Unlike this repo's earlier siblings' first builds, this one is NOT
+starting from zero live data: a browser-rendering tool (not this engine
+itself — see TESTING.md) already confirmed shein.com's real search-page
+data source and a real, live bot-mitigation incident. **What that capture
+does NOT confirm is what THIS engine — a real headless Playwright launch,
+a different client — actually gets.** `--proxy`/`--cdp-endpoint`/
+`--fingerprint` remain opt-in power options, framed the same as every
+sibling repo, not proven necessary defaults yet.
+
+Example:
+    python3 playwright_scraper.py --query "summer dress" --format json --out results.json
+    python3 playwright_scraper.py --category "Women Jeans-c-1934.html" --max-results 40
+    python3 playwright_scraper.py --url "https://us.shein.com/dsbayvkj-p-33704388.html"
+
+This engine reads `window.gbRawData` LIVE via `page.evaluate()` on every
+round — the confirmed-real, richest source (see shein_parser.py's module
+docstring) — falling back to extracting the same object from the raw
+HTML when evaluation fails for any reason. Whether scrolling actually
+grows this object with more real products past its first SSR batch, or
+needs some other trigger, is UNCONFIRMED (see shein_parser.py) — this
+loop re-checks the object each round rather than assuming either answer,
+and stops on the same stall-based heuristic as lidl-scraper's own loop.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+import sys
+import time
+from pathlib import Path
+from typing import List, Optional
+
+try:
+    from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+except ImportError as _IMPORT_ERROR:  # pragma: no cover — exercised by smoke_test's no-engine path
+    Browser = BrowserContext = Page = None
+    async_playwright = None
+    _PLAYWRIGHT_IMPORT_ERROR = _IMPORT_ERROR
+else:
+    _PLAYWRIGHT_IMPORT_ERROR = None
+
+import env_config
+import shein_parser as sp
+from captcha_solver import detect_from_html, solve_when_blocked
+from fingerprint_client import fetch_fingerprint, refuse_if_cdp, user_agent_from
+from output_writer import EXIT_BAD_USAGE, EXIT_CRASH, Product, finish_run, sku_key as _sku_key
+from proxy_pool import Proxy, ProxyPool, ProxyParseError, is_proxy_dead_error, load_proxies, redact_credentials
+from scraper_api_client import TwoCaptchaClient
+
+ENGINE_NAME = "playwright"
+
+# --- the handful of engine constants that vary per site (CLAUDE.md §5) ---
+NAV_TIMEOUT_MS = 30_000
+READINESS_WAIT_MS = 3_000  # window.gbRawData is confirmed present in the initial
+                            # SSR payload (no extra XHR needed for the first
+                            # batch — see shein_parser.py) so this is mostly
+                            # slack for the risk-gateway redirect (if any) to
+                            # settle, not for client-side hydration.
+MIN_CARD_MATCHES = sp.MIN_CARD_MATCHES
+
+log = logging.getLogger("playwright_scraper")
+
+
+def _positive_int(value: str) -> int:
+    ivalue = int(value)
+    if ivalue < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive integer (got {value!r})")
+    return ivalue
+
+
+def _nonnegative_int(value: str) -> int:
+    ivalue = int(value)
+    if ivalue < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0 (got {value!r})")
+    return ivalue
+
+
+def _nonnegative_float(value: str) -> float:
+    fvalue = float(value)
+    if fvalue < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0 (got {value!r})")
+    return fvalue
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="shein.com fashion listing scraper — Playwright engine",
+        epilog="Credentials belong in .env / SHEIN_PROXY / TWOCAPTCHA_KEY — never on this command line.",
+    )
+    p.add_argument("--url", default=None, help="Full shein.com search/category/product URL (or set SHEIN_URL) — overrides --query/--category")
+    p.add_argument("--query", default=None, help="Search term, e.g. 'summer dress'")
+    p.add_argument("--category", default=None, help="A category path copied from shein.com navigation, e.g. 'Women Jeans-c-1934.html'")
+    p.add_argument("--sort", choices=sp.SORT_VALUES, default="relevance", help="Recorded on the run only — NOT yet wired into the URL, see shein_parser.py")
+    p.add_argument("--max-results", type=_positive_int, default=30, help="Cap on number of products scraped")
+    p.add_argument("--max-scrolls", type=_positive_int, default=20, help="Hard cap on scroll rounds, independent of --stall-rounds")
+    p.add_argument("--stall-rounds", type=_positive_int, default=4, help="Stop after this many consecutive scrolls add no new product")
+    p.add_argument("--scroll-delay", type=_nonnegative_float, default=1.5, help="Delay between scroll rounds, seconds")
+    p.add_argument("--format", choices=["json", "csv"], default="json")
+    p.add_argument("--out", default=None, help="Output path (default: shein_results.<format>)")
+    p.add_argument("--retries", type=_nonnegative_int, default=2, help="Retries on initial navigation failure")
+    p.add_argument("--retry-delay", type=_nonnegative_float, default=3.0)
+    p.add_argument("--proxy", default=None, help="A single proxy, e.g. http://login:pass@host:port (or set SHEIN_PROXY)")
+    p.add_argument("--proxy-file", default=None, help="One proxy per line, same formats as --proxy")
+    p.add_argument("--proxy-shuffle", action="store_true")
+    p.add_argument("--proxy-block-retries", type=int, default=3)
+    p.add_argument("--twocaptcha-key", default=None, help="(or set TWOCAPTCHA_KEY)")
+    p.add_argument("--captcha-api", default=None, help="Override the 2Captcha API base URL (testing only)")
+    p.add_argument("--solve-captcha", choices=["off", "when-blocked", "always"], default="when-blocked")
+    p.add_argument("--min-score", type=float, default=0.3, help="Minimum acceptable reCAPTCHA v3 score (2Captcha's minScore task field)")
+    p.add_argument("--cdp-endpoint", default=None, help="Connect to a remote CDP session (e.g. the 2Captcha Scraping Browser API) instead of launching locally (or set SHEIN_CDP_ENDPOINT) — opt-in, not required for a normal run")
+    p.add_argument("--fingerprint", action="store_true", help="Fetch and apply a 2Captcha Fingerprint API profile (ignored with --cdp-endpoint — see fingerprint_client.refuse_if_cdp)")
+    p.add_argument("--fp-tags", default=None, help="Fingerprint API filter, e.g. 'Windows,Chrome'")
+    p.add_argument("--fp-country", default=None, help="Fingerprint API filter, e.g. 'us'")
+    p.add_argument("--allow-empty", action="store_true", help="Write output even if zero products were found")
+    p.add_argument("--dump-html", action="store_true", help="Save the final accumulated page HTML next to --out, on success too")
+    p.add_argument("--headless", dest="headless", action="store_true", default=True)
+    p.add_argument("--headful", dest="headless", action="store_false")
+    return p
+
+
+def _default_out(fmt: str) -> str:
+    return f"shein_results.{fmt}"
+
+
+def _resolve_start_url(args: argparse.Namespace):
+    if args.url:
+        if sp.is_disallowed_path(args.url):
+            return None, True  # (url, is_product_page) — signal handled by caller
+        return args.url, args.url.count("-p-") > 0 and args.url.endswith(".html") and "pdsearch" not in args.url
+    if args.query or args.category:
+        return sp.search_url(query=args.query, category_path=args.category), False
+    return None, False
+
+
+def _dump_path(out_path: str) -> str:
+    stem = Path(out_path).with_suffix("")
+    return f"{stem}_debug.html"
+
+
+async def _new_context(browser: Browser, proxy: Optional[Proxy], user_agent: Optional[str]) -> BrowserContext:
+    kwargs = {}
+    if proxy is not None:
+        kwargs["proxy"] = proxy.playwright_proxy_dict()
+    if user_agent:
+        kwargs["user_agent"] = user_agent
+    return await browser.new_context(**kwargs)
+
+
+async def _enable_scraping_browser_auto_solve(context: BrowserContext, page: Page) -> None:
+    """Only meaningful over --cdp-endpoint — see the identical helper in
+    every sibling repo's playwright_scraper.py."""
+    try:
+        session = await context.new_cdp_session(page)
+        session.on("Captcha.detected", lambda *_: log.info("[Scraping Browser API] captcha detected"))
+        session.on("Captcha.solveFinished", lambda *_: log.info("[Scraping Browser API] captcha solved"))
+        session.on("Captcha.solveFailed", lambda *_: log.warning("[Scraping Browser API] captcha solve failed"))
+        await session.send("Captcha.setAutoSolve", {"autoSolve": True, "options": [{"type": "*"}]})
+    except Exception as exc:  # noqa: BLE001 — optional enhancement, never fatal
+        log.warning("Captcha.setAutoSolve unavailable on this CDP session (continuing without it): %s", exc)
+
+
+async def _maybe_solve_captcha(
+    *, html: str, url: str, client: Optional[TwoCaptchaClient], policy: str, min_score: float = 0.3,
+) -> Optional[dict]:
+    if policy == "off" or client is None:
+        return None
+    result = solve_when_blocked(
+        client=client, page_url=url, html=html, count_product_links=sp.count_result_cards,
+        extra_markers=sp.BOT_CHALLENGE_MARKERS, min_score=min_score,
+    )
+    action = result.get("action")
+    if action == "no_captcha_detected":
+        pass
+    elif action == "skipped_products_present":
+        log.info("Captcha-like marker present but results already rendered — not solving.")
+    elif action == "warning_no_key":
+        log.warning("Captcha solving skipped: %s", result.get("detail"))
+    elif action == "warning_solver_error":
+        log.warning("Captcha solve failed: %s", result.get("detail"))
+    elif action == "solved":
+        log.info("Captcha solved via 2Captcha (%s).", result.get("captcha_type"))
+    elif action == "detected_unidentified_widget":
+        log.warning(
+            "A bot-mitigation marker was detected but no known widget/sitekey could be extracted "
+            "— SHEIN's own /risk/challenge gateway is a real, confirmed incident with no known "
+            "2Captcha automated solve path yet (see shein_parser.py's module docstring); this is "
+            "expected for THAT case, not necessarily a bug."
+        )
+    return result
+
+
+async def _connect_over_cdp(pw, cdp_endpoint: str):
+    """See every sibling repo's playwright_scraper.py for why this wraps
+    the connection error rather than letting it propagate: connect_over_cdp
+    repeats a failed endpoint's login:password in its own message and
+    "Call log" several times over."""
+    try:
+        return await pw.chromium.connect_over_cdp(cdp_endpoint)
+    except Exception as exc:
+        raise RuntimeError(f"CDP connection failed: {redact_credentials(str(exc))}") from None
+
+
+async def _read_gb_raw_data(page: Page) -> Optional[dict]:
+    """Live JS read, the confirmed-real, most robust source (see
+    shein_parser.py) — never lets a JS-side error crash the run."""
+    try:
+        return await page.evaluate("() => window.gbRawData || null")
+    except Exception as exc:  # noqa: BLE001 — falls back to HTML-text extraction, never fatal
+        log.debug("page.evaluate('window.gbRawData') failed, will fall back to HTML extraction: %s", exc)
+        return None
+
+
+async def scrape_search(
+    *, args: argparse.Namespace, start_url: str, browser: Browser,
+    proxy_pool: Optional[ProxyPool], client: Optional[TwoCaptchaClient],
+    autosolve: bool, user_agent: Optional[str],
+) -> tuple:
+    """Returns (products, blocked, remote_api_error, scroll_rounds_done, scroll_error)
+    — same contract as every sibling engine's own scrape_search()/
+    scrape_urls()."""
+    blocked = False
+    remote_api_error = False
+    scroll_error = False
+
+    proxy = proxy_pool.next() if proxy_pool else None
+    log.info("Using proxy %s", proxy.masked() if proxy else "(no local proxy pool — direct connection, or a --cdp-endpoint session providing its own exit)")
+    context = await _new_context(browser, proxy, user_agent)
+    page = await context.new_page()
+    if autosolve:
+        await _enable_scraping_browser_auto_solve(context, page)
+
+    last_error = None
+    status = None
+    for attempt in range(args.retries + 1):
+        try:
+            response = await page.goto(start_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+            await page.wait_for_timeout(READINESS_WAIT_MS)
+            status = response.status if response is not None else None
+            last_error = None
+            break
+        except Exception as exc:  # noqa: BLE001 — every remote call must be bounded and reported
+            last_error = str(exc)
+            log.warning("Navigation attempt %d/%d failed: %s", attempt + 1, args.retries + 1, last_error)
+            if attempt < args.retries:
+                await asyncio.sleep(args.retry_delay)
+
+    if last_error is not None:
+        await context.close()
+        log.error("Search page permanently failed to load: %s", last_error)
+        return [], False, True, 0, False
+
+    # REAL, confirmed-live incident (see shein_parser.py's module
+    # docstring): SHEIN's own /risk/challenge gateway silently redirects
+    # a request it doesn't like, rather than returning a >=400 status —
+    # the final page.url is the single most reliable signal for it,
+    # cheaper and more direct than scanning HTML content (though
+    # sp.BOT_CHALLENGE_MARKERS below also matches, since the redirect
+    # target is embedded as text in the page's own SSR JSON state).
+    if "/risk/challenge" in page.url:
+        log.warning("Redirected to SHEIN's own risk/challenge gateway (%s) — treating as blocked.", page.url)
+        blocked = True
+        if proxy_pool is not None and proxy is not None:
+            proxy_pool.report_failure(proxy, dead=False)
+
+    if status is not None and status >= 400:
+        log.warning("Search page returned HTTP %d — treating as blocked, not empty.", status)
+        blocked = True
+        if proxy_pool is not None and proxy is not None and status in (403, 429):
+            proxy_pool.report_failure(proxy, dead=True)
+    elif status is not None and proxy_pool is not None and proxy is not None:
+        proxy_pool.report_success(proxy)
+
+    seen_skus: set = set()
+    merged: List[Product] = []
+    stall = 0
+    previous_product_count = -1
+    rounds = 0
+
+    for round_num in range(args.max_scrolls + 1):
+        rounds = round_num
+        html = await page.content()
+        raw_data = await _read_gb_raw_data(page)
+        captcha_detected = detect_from_html(html, sp.BOT_CHALLENGE_MARKERS)
+        cards_present = sp.count_result_cards(html) > 0
+        if captcha_detected and not cards_present:
+            blocked = True
+        captcha_result = await _maybe_solve_captcha(html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score)
+        if captcha_result and captcha_result.get("action") in ("warning_no_key", "warning_solver_error", "detected_unidentified_widget"):
+            if sp.count_result_cards(html) == 0:
+                blocked = True
+
+        result = sp.safe_parse_search_results(html, max_results=args.max_results, raw_data=raw_data)
+        if result.source_used == "none" and round_num == 0 and not blocked:
+            log.warning(
+                "No products recognised on the first render — either this search "
+                "genuinely has no results, or shein_parser.py's window.gbRawData "
+                "path needs updating for the current shein.com markup (see its "
+                "module docstring). Re-run with --dump-html to inspect the captured page."
+            )
+
+        round_skus = {_sku_key(p) for p in result.products}
+        new_skus = round_skus - seen_skus
+        current_product_count = len(round_skus)
+        if new_skus:
+            for p in result.products:
+                if _sku_key(p) in new_skus:
+                    merged.append(p)
+            seen_skus |= new_skus
+            stall = 0
+        else:
+            if previous_product_count == current_product_count:
+                stall += 1
+            else:
+                stall = 0
+        previous_product_count = current_product_count
+
+        if result.products:
+            blocked = False
+
+        if len(merged) >= args.max_results:
+            merged = merged[: args.max_results]
+            break
+        if round_num >= args.max_scrolls:
+            break
+        if stall >= args.stall_rounds:
+            break
+
+        try:
+            # Whether this actually grows window.gbRawData with more real
+            # products, or just renders more skeleton/lazy cards already
+            # present in the initial DOM, is UNCONFIRMED — see
+            # shein_parser.py's module docstring. The stall-based
+            # `--stall-rounds` cap above is what keeps this loop bounded
+            # either way, rather than assuming scrolling always helps.
+            await page.evaluate(
+                "() => window.scrollBy(0, Math.max(Math.floor(window.innerHeight * 0.8), 600))"
+            )
+        except Exception as exc:  # noqa: BLE001 — a scroll failure ends the loop, not the run
+            log.warning("Scroll failed, stopping pagination early: %s", exc)
+            scroll_error = True
+            break
+        await asyncio.sleep(args.scroll_delay)
+
+    final_html = await page.content()
+    final_raw_data = await _read_gb_raw_data(page)
+    total_available = sp.total_result_count(final_html, raw_data=final_raw_data)
+    expected = min(total_available, args.max_results) if total_available is not None else None
+    if expected is not None and len(merged) < expected:
+        log.warning(
+            "Fewer products collected than SHEIN reports available: reports %d, requested %d, collected %d.",
+            total_available, args.max_results, len(merged),
+        )
+        scroll_error = True
+
+    if args.dump_html:
+        Path(_dump_path(args.out)).write_text(final_html, encoding="utf-8")
+
+    await context.close()
+    return merged, blocked, remote_api_error, rounds, scroll_error
+
+
+async def scrape_product_page(
+    *, args: argparse.Namespace, start_url: str, browser: Browser,
+    proxy_pool: Optional[ProxyPool], client: Optional[TwoCaptchaClient],
+    autosolve: bool, user_agent: Optional[str],
+) -> tuple:
+    """A --url pointed directly at one product page — confirmed real via
+    shein_parser.parse_product_page()'s JSON-LD path. Returns the same
+    5-tuple shape as scrape_search() for a uniform caller."""
+    blocked = False
+    remote_api_error = False
+
+    proxy = proxy_pool.next() if proxy_pool else None
+    context = await _new_context(browser, proxy, user_agent)
+    page = await context.new_page()
+    if autosolve:
+        await _enable_scraping_browser_auto_solve(context, page)
+
+    last_error = None
+    status = None
+    for attempt in range(args.retries + 1):
+        try:
+            response = await page.goto(start_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+            await page.wait_for_timeout(READINESS_WAIT_MS)
+            status = response.status if response is not None else None
+            last_error = None
+            break
+        except Exception as exc:  # noqa: BLE001
+            last_error = str(exc)
+            log.warning("Navigation attempt %d/%d failed: %s", attempt + 1, args.retries + 1, last_error)
+            if attempt < args.retries:
+                await asyncio.sleep(args.retry_delay)
+
+    if last_error is not None:
+        await context.close()
+        return [], False, True, 0, False
+
+    if "/risk/challenge" in page.url:
+        blocked = True
+    if status is not None and status >= 400:
+        blocked = True
+
+    html = await page.content()
+    product = sp.parse_product_page(html, url=start_url)
+    if args.dump_html:
+        Path(_dump_path(args.out)).write_text(html, encoding="utf-8")
+    await context.close()
+    products = [product] if product else []
+    if not products and not blocked:
+        log.warning("Product page rendered but no ProductGroup/Product JSON-LD was found — see shein_parser.py.")
+    return products, blocked, remote_api_error, 0, False
+
+
+async def run(args: argparse.Namespace) -> int:
+    started_at = time.time()
+    start_url, is_product_page = _resolve_start_url(args)
+    if not start_url:
+        if args.url and sp.is_disallowed_path(args.url):
+            print(f"Error: --url {args.url!r} matches a robots.txt-disallowed path — refusing.", file=sys.stderr)
+        else:
+            print("Error: provide --url, --query, or --category", file=sys.stderr)
+        return EXIT_BAD_USAGE
+    if args.format not in ("json", "csv"):
+        print(f"Error: unsupported --format {args.format!r}", file=sys.stderr)
+        return EXIT_BAD_USAGE
+    if async_playwright is None:
+        print(f"Error: playwright is not installed ({_PLAYWRIGHT_IMPORT_ERROR}). "
+              f"pip install -r requirements-playwright.txt && playwright install chromium", file=sys.stderr)
+        return EXIT_CRASH
+    args.out = args.out or _default_out(args.format)
+
+    try:
+        proxies = load_proxies(args.proxy, args.proxy_file)
+    except ProxyParseError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return EXIT_BAD_USAGE
+    proxy_pool = ProxyPool(proxies, shuffle=args.proxy_shuffle, block_retries=args.proxy_block_retries) if proxies else None
+
+    client = None
+    if args.twocaptcha_key and (args.solve_captcha != "off" or args.fingerprint):
+        client = TwoCaptchaClient(args.twocaptcha_key, api_base=args.captcha_api)
+
+    user_agent = None
+    cdp_refused_fingerprint = refuse_if_cdp(args.cdp_endpoint)
+    if args.fingerprint and not cdp_refused_fingerprint:
+        if client is None:
+            log.warning("--fingerprint requested but no --twocaptcha-key/TWOCAPTCHA_KEY set — continuing without one.")
+        else:
+            profile = fetch_fingerprint(client, tags=args.fp_tags, country=args.fp_country)
+            if profile:
+                user_agent = user_agent_from(profile)
+
+    cdp_connect_failed = False
+    try:
+        async with async_playwright() as pw:
+            if args.cdp_endpoint:
+                if args.proxy or args.proxy_file:
+                    log.warning("Ignoring --proxy: a --cdp-endpoint session already carries its own exit IP.")
+                    proxy_pool = None
+                try:
+                    browser = await _connect_over_cdp(pw, args.cdp_endpoint)
+                except RuntimeError as exc:
+                    log.error("CDP connection failed — treating as remote_api_error, not a crash: %s", exc)
+                    cdp_connect_failed = True
+                    browser = None
+            else:
+                browser = await pw.chromium.launch(headless=args.headless)
+
+            if cdp_connect_failed:
+                merged, blocked, remote_api_error, rounds, scroll_error = [], False, True, 0, False
+            else:
+                autosolve = bool(args.cdp_endpoint) and args.solve_captcha != "off"
+                scrape_fn = scrape_product_page if is_product_page else scrape_search
+                merged, blocked, remote_api_error, rounds, scroll_error = await scrape_fn(
+                    args=args, start_url=start_url, browser=browser, proxy_pool=proxy_pool,
+                    client=client, autosolve=autosolve, user_agent=user_agent,
+                )
+                await browser.close()
+    except Exception:
+        log.exception("Unhandled error — this is a crash, not a normal blocked/empty run")
+        return EXIT_CRASH
+
+    price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
+    completed_rounds = rounds + 1
+    failed_pages = [completed_rounds + 1] if scroll_error else None
+
+    return finish_run(
+        products=merged,
+        out_path=args.out,
+        fmt=args.format,
+        engine=ENGINE_NAME,
+        url=start_url,
+        pages_requested=args.max_scrolls,
+        pages_completed=completed_rounds,
+        failed_pages=failed_pages,
+        blocked=blocked,
+        remote_api_error=remote_api_error,
+        allow_empty=args.allow_empty,
+        started_at=started_at,
+        price_confirmed_pct=price_confirmed_pct,
+    )
+
+
+def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    parser = build_arg_parser()
+    args = parser.parse_args()
+    args = env_config.apply_env(args)
+    try:
+        return asyncio.run(run(args))
+    except KeyboardInterrupt:
+        return EXIT_CRASH
+
+
+if __name__ == "__main__":
+    sys.exit(main())

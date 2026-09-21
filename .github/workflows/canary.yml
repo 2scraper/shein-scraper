@@ -1,0 +1,122 @@
+name: canary
+
+on:
+  schedule:
+    - cron: "41 6 * * *"   # once daily; avoid :00 so it doesn't pile up with everyone else's
+  workflow_dispatch: {}     # dispatch manually at least once before trusting the badge
+
+jobs:
+  # A real local-first browser run. Blocked, empty, partial, and remote-error
+  # outcomes are red: a canary that accepts them cannot detect selector or
+  # pagination regressions.
+  #
+  # Thresholds below are deliberately conservative relative to lidl-
+  # scraper's sibling canary: this repo's scroll-driven pagination growth
+  # (does scrolling actually add NEW products past the first confirmed
+  # window.gbRawData batch of ~20?) is documented as unconfirmed — see
+  # README "Pagination" / TESTING.md. Requiring only one completed round
+  # and a product floor below the confirmed first-batch size avoids a
+  # canary that's red for a reason this repo has already told you it
+  # doesn't know the answer to yet. Once a real run confirms scroll growth
+  # one way or the other, tighten this the same way lidl-scraper's was
+  # tightened after its own first live multi-round run (see CHANGELOG.md).
+  canary-local:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install -r requirements-playwright.txt
+          playwright install --with-deps chromium
+
+      - name: Run the local-first default against a real search
+        run: |
+          set +e
+          python3 playwright_scraper.py \
+            --query "dress" --max-results 15 --format json --out canary_out.json --dump-html
+          echo "exit_code=$?" >> "$GITHUB_ENV"
+
+      - name: Require a complete result with a plausible product floor
+        run: |
+          python3 -c "
+          import json, os
+
+          code = int(os.environ['exit_code'])
+          print(f'playwright_scraper.py exited {code}')
+
+          if code != 0:
+              raise SystemExit(f'canary requires EXIT_OK=0, got {code}')
+          meta = json.load(open('canary_out.json.meta.json'))
+          print(json.dumps(meta, indent=2))
+          assert meta['status'] == 'complete', meta
+          assert meta['pages_completed'] >= 1, meta
+          assert meta['product_count'] >= 10, meta
+          assert (meta['price_confirmed_pct'] or 0) >= 0.9, meta
+          print(f\"canary: got {meta['product_count']} products in {meta['pages_completed']} round(s)\")
+          "
+
+      - name: Upload artifacts (output + debug HTML) on every run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-local-${{ github.run_id }}
+          path: |
+            canary_out.json
+            canary_out.json.meta.json
+            canary_out_debug.html
+          retention-days: 14
+
+  # Opt-in, mirroring the rest of the family's pattern: exercises the
+  # --cdp-endpoint (2Captcha Scraping Browser API) path when a repo secret
+  # is configured. Skips cleanly — not red — when it isn't. Also the best
+  # place to observe whether the Scraping Browser API's own device
+  # identity avoids the confirmed /risk/challenge redirect entirely — see
+  # TESTING.md step 6.
+  canary-cdp:
+    runs-on: ubuntu-latest
+    env:
+      HAS_CDP: ${{ secrets.SHEIN_CDP_ENDPOINT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip — no SHEIN_CDP_ENDPOINT secret configured
+        if: env.HAS_CDP != 'true'
+        run: |
+          echo "::notice::Skipping the Scraping Browser API run: no SHEIN_CDP_ENDPOINT \
+          secret is set. This is optional — canary-local above already exercises this repo's \
+          local-first default with no secrets at all. Set SHEIN_CDP_ENDPOINT (and \
+          TWOCAPTCHA_KEY) as repo secrets to also turn this job on. This is a SKIP, not a pass \
+          or a fail."
+
+      - uses: actions/setup-python@v5
+        if: env.HAS_CDP == 'true'
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-playwright.txt
+        if: env.HAS_CDP == 'true'
+
+      # Both secrets go through the ENVIRONMENT, never a command-line flag
+      # (credentials never reach argv). env_config.py already reads
+      # SHEIN_CDP_ENDPOINT/TWOCAPTCHA_KEY unconditionally, so this is
+      # correct with or without either secret set.
+      - name: Run over the Scraping Browser API
+        if: env.HAS_CDP == 'true'
+        env:
+          SHEIN_CDP_ENDPOINT: ${{ secrets.SHEIN_CDP_ENDPOINT }}
+          TWOCAPTCHA_KEY: ${{ secrets.TWOCAPTCHA_KEY }}
+        run: |
+          python3 playwright_scraper.py \
+            --query "summer dress" --max-results 10 --format json --out canary_cdp_out.json --dump-html
+
+      - name: Upload artifacts on every non-skipped run
+        if: always() && env.HAS_CDP == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-cdp-${{ github.run_id }}
+          path: |
+            canary_cdp_out.json
+            canary_cdp_out.json.meta.json
+            canary_cdp_out_debug.html
+          retention-days: 14
