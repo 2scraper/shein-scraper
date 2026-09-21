@@ -381,6 +381,79 @@ def _():
     assert signal.sitekey == "0x4AAA_example"
 
 
+@check("captcha_solver GeeTest support (added 2026-09-21, see module docstring): v4 and v3 both identify and build the correct 2Captcha task")
+def _():
+    # These two HTML shapes are UNCONFIRMED best-effort (GeeTest's own
+    # public integration docs), not a real shein.com capture — see
+    # captcha_solver.py's module-level comment above _GEETEST_V4_ID_PATTERNS.
+    # This test only proves the plumbing (extraction -> task payload)
+    # works for the documented shape, not that shein.com's real widget
+    # matches it.
+    v4_html = '<div class="geetest_captcha_button" data-captcha-id="0123456789abcdef0123456789abcdef"></div>'
+    v4_signal = captcha_solver.identify_widget(v4_html)
+    assert v4_signal is not None
+    assert v4_signal.captcha_type == captcha_solver.CaptchaType.GEETEST_V4
+    assert v4_signal.captcha_id == "0123456789abcdef0123456789abcdef"
+    v4_task = captcha_solver._task_payload(v4_signal, "https://us.shein.com/pdsearch/dress/", proxyless=True)
+    assert v4_task == {
+        "type": "GeeTestV4TaskProxyless",
+        "websiteURL": "https://us.shein.com/pdsearch/dress/",
+        "captchaId": "0123456789abcdef0123456789abcdef",
+    }
+
+    v3_html = "<script>initGeetest({gt: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', challenge: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'});</script>"
+    v3_signal = captcha_solver.identify_widget(v3_html)
+    assert v3_signal is not None
+    assert v3_signal.captcha_type == captcha_solver.CaptchaType.GEETEST_V3
+    assert v3_signal.gt == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    assert v3_signal.challenge == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    v3_task = captcha_solver._task_payload(v3_signal, "https://us.shein.com/pdsearch/dress/", proxyless=True)
+    assert v3_task == {
+        "type": "GeeTestTaskProxyless",
+        "websiteURL": "https://us.shein.com/pdsearch/dress/",
+        "gt": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "challenge": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    }
+
+    # A page with neither shape (e.g. this repo's own real
+    # shein_risk_challenge_real.html capture, which never got as far as
+    # rendering an actual widget) correctly finds nothing to solve.
+    assert captcha_solver.identify_widget("<html><body>plain page</body></html>") is None
+
+
+@check("scraper_api_client.solve_and_wait falls back to a JSON-encoded solution for a multi-field result (GeeTest), instead of crashing")
+def _():
+    # GeeTest's solution has no single token/gRecaptchaResponse field
+    # (see scraper_api_client.solve_and_wait's docstring) — this proves
+    # the fallback path returns something usable rather than raising
+    # TwoCaptchaError the way it would have before this change.
+    client = scraper_api_client.TwoCaptchaClient(api_key="fake-key-for-test")
+
+    class _FakeCreated:
+        task_id = 1
+
+    def _fake_create_task(task):
+        return _FakeCreated()
+
+    def _fake_get_task_result(created):
+        return {
+            "status": "ready",
+            "solution": {
+                "lot_number": "20260921aaaa",
+                "pass_token": "bbbb",
+                "gen_time": "1789990000",
+                "captcha_output": "cccc",
+            },
+        }
+
+    client.create_task = _fake_create_task
+    client.get_task_result = _fake_get_task_result
+    result = client.solve_and_wait({"type": "GeeTestV4TaskProxyless"}, poll_interval=0)
+    parsed = json.loads(result)
+    assert parsed["lot_number"] == "20260921aaaa"
+    assert parsed["pass_token"] == "bbbb"
+
+
 # --------------------------------------------------------------------------- #
 # env_config — SHEIN_* keys, placeholder detection, precedence (family-shared)
 # --------------------------------------------------------------------------- #

@@ -279,19 +279,32 @@ since these are properties of the drivers, not the site):
   own content is a normal-looking SHEIN shell, not vendor-identifiable
   widget markup — so unlike every other family member's incident, these
   extra markers are load-bearing, not corroboration.
-- **Captcha token injection on a locally-launched browser is not
-  implemented**, same reason as the rest of the family: injecting a solved
-  token is widget/site-specific, and this incident's actual challenge
-  widget was never reached (the redirect page itself was captured, not
-  what's served after it). Over `--cdp-endpoint` (the Scraping Browser
-  API), this doesn't matter — 2Captcha's own `Captcha.setAutoSolve` CDP
-  domain handles it entirely inside their infrastructure.
+- **`captcha_solver.py` can now build a 2Captcha task for GeeTest** (added
+  2026-09-21 — `CaptchaType.GEETEST_V3`/`GEETEST_V4`), since shein.com's
+  gateway is suspected (not confirmed — see above) to use it. Two real gaps
+  remain even so: (1) the widget-detection patterns in `identify_widget()`
+  are UNCONFIRMED best-effort from GeeTest's own public docs, not a real
+  shein.com capture — this incident's actual challenge widget was never
+  reached, only the redirect page — and (2) **captcha token injection on a
+  locally-launched browser is not implemented for ANY widget type in this
+  family**, GeeTest included — `_maybe_solve_captcha` gets a solved
+  token/solution back from 2Captcha but no engine writes it into the page.
+  Over `--cdp-endpoint` (the Scraping Browser API), (2) doesn't matter —
+  2Captcha's own `Captcha.setAutoSolve` CDP domain solves AND injects
+  entirely inside their infrastructure — but that extension's own
+  confirmed widget coverage (live, 2026-09-14: Turnstile, Amazon WAF,
+  Yandex SmartCaptcha, Lemin) did not include GeeTest in the one capture
+  that confirmed it, so whether a real GeeTest challenge on shein.com gets
+  auto-solved over CDP is itself unconfirmed, not just the local path.
 - **No engine here has been run live against the real site yet** — the
   research above comes from a browser-rendering tool driving real pages,
-  not this repo's own `playwright_scraper.py`/etc. (see `TESTING.md`). The
-  architecture (exit codes, crash-safety, dedupe, CLI parity) is tested
-  offline via `smoke_test.py`; a first live engine run is the highest-value
-  remaining check.
+  not this repo's own `playwright_scraper.py`/etc. (see `TESTING.md`).
+  `shein_parser.parse_search_results()` itself HAS been confirmed against a
+  second real live capture (10/10 products, clean `finish_run()`, see
+  `CHANGELOG.md`) — what's still open is the engine scripts' own browser
+  automation (launch, scroll loop, retries) end to end, currently blocked
+  by a network-egress policy in this repo's available execution
+  environments, not a code gap (see `TESTING.md`).
 - **Scroll-driven pagination growth is unconfirmed** — see "Pagination"
   above.
 - **DOM fallback selectors are unverified guesses** (`# TODO: verify live`

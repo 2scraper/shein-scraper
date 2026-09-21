@@ -15,11 +15,27 @@ Policy, matching the family's hard-won rule that "detected != blocking":
     gated (see output_writer.EXIT_BLOCKED).
 
 No JavaScript crosses this module's boundary: it hands back a plain
-(captcha_type, sitekey, token) triple. The engine — which already speaks
+(captcha_type, sitekey, token) result. The engine — which already speaks
 its own driver's dialect (Playwright/Selenium/pyppeteer) — is the one that
 calls page.evaluate / execute_script to inject the token, because that is
 exactly the kind of per-engine primitive `page_flow.py`-style code should
 own instead of a shared module quietly picking one driver's dialect.
+**No engine in this family actually does that injection yet** for a
+locally-launched (non `--cdp-endpoint`) browser — every engine's own
+`_maybe_solve_captcha` only logs "solved", it never writes the token back
+into the page. Over `--cdp-endpoint`, this doesn't matter: 2Captcha's own
+`Captcha.setAutoSolve` CDP domain (see each engine's own
+`_enable_scraping_browser_auto_solve`) solves AND injects entirely inside
+their infrastructure, for whichever widget types their Scraping Browser
+extension recognizes (confirmed live, 2026-09-14: Turnstile, Amazon WAF,
+Yandex SmartCaptcha, Lemin — GeeTest was NOT in that confirmed list,
+though it may be covered and simply wasn't seen in that one capture). This
+module's own solve path (this file + scraper_api_client.py) is what a
+LOCAL browser run would need for a widget the CDP extension doesn't
+already cover — GeeTest support was added here 2026-09-21 for exactly that
+reason (see CaptchaType.GEETEST_V3/GEETEST_V4 below), but token injection
+for ANY type on a local browser remains a real, open gap, not something
+this GeeTest addition closes on its own.
 """
 from __future__ import annotations
 
@@ -47,6 +63,8 @@ class CaptchaType(str, Enum):
     RECAPTCHA_V2 = "recaptcha_v2"
     RECAPTCHA_V3 = "recaptcha_v3"
     HCAPTCHA = "hcaptcha"
+    GEETEST_V3 = "geetest_v3"
+    GEETEST_V4 = "geetest_v4"
 
 
 _SITEKEY_PATTERNS = {
@@ -65,12 +83,45 @@ _SITEKEY_PATTERNS = {
 _RECAPTCHA_V3_LOADER_RE = re.compile(r"recaptcha/api\.js\?render=([\w-]+)")
 _RECAPTCHA_EXPLICIT_LOADER_RE = re.compile(r"recaptcha/api\.js\?render=explicit")
 
+# GeeTest — added 2026-09-21 after shein.com's own risk gateway
+# (captcha_type=909, see shein_parser.BOT_CHALLENGE_MARKERS) correlated
+# with GeeTest via three circumstantial signals documented in
+# shein_parser.py's module docstring (the site's global stylesheet defines
+# .geetest_wind/.geetest_panel on EVERY page, robots.txt disallows
+# /geetest/, and the numeric captcha_type code is consistent with GeeTest's
+# own convention) — NOT a confirmed vendor string the way every other
+# CaptchaType below was found (an actual `cf-turnstile`/`g-recaptcha`/
+# `h-captcha` class or loader URL, seen live). No family site, shein.com
+# included, has ever had its actual GeeTest widget markup captured — only
+# a waiting/redirect shell page, never what renders when a real challenge
+# is actually shown. These two patterns are therefore UNCONFIRMED
+# best-effort, built from GeeTest's own public client-integration
+# documentation (a `data-captcha-id`/`captchaId` attribute for v4; `gt`
+# and `challenge` fields together for v3 — both are 32-character
+# hex-like ids in GeeTest's own docs), not a shein.com-specific fact.
+# `# TODO: verify live` applies here exactly like shein_parser.py's own
+# DOM fallback selectors — update these the moment a real capture exists.
+_GEETEST_V4_ID_PATTERNS = (
+    re.compile(r'data-captcha-id=["\']([a-f0-9]{32})["\']'),
+    re.compile(r'captchaId["\']?\s*:\s*["\']([a-f0-9]{32})["\']'),
+)
+_GEETEST_V3_RE = re.compile(
+    r'gt["\']?\s*:\s*["\']([a-f0-9]{32})["\'][^{}]*?challenge["\']?\s*:\s*["\']([a-f0-9]{32})["\']',
+    re.S,
+)
+
 
 @dataclass
 class CaptchaSignal:
     captcha_type: CaptchaType
     sitekey: Optional[str]
     invisible: bool = False
+    # GeeTest-only fields (see the module-docstring note above on why
+    # GeeTest doesn't fit the plain sitekey shape every other type uses).
+    gt: Optional[str] = None
+    challenge: Optional[str] = None
+    captcha_id: Optional[str] = None
+    api_server: Optional[str] = None
 
 
 # The Scraping Browser API's managed Chromium ships 2Captcha's OWN
@@ -122,10 +173,41 @@ def identify_widget(html: str) -> Optional[CaptchaSignal]:
         m = pattern.search(html)
         if m:
             return CaptchaSignal(ctype, sitekey=m.group(1))
+    # GeeTest — v4 first (current-generation; see the UNCONFIRMED note on
+    # the patterns themselves, above).
+    for pattern in _GEETEST_V4_ID_PATTERNS:
+        m = pattern.search(html)
+        if m:
+            return CaptchaSignal(CaptchaType.GEETEST_V4, sitekey=None, captcha_id=m.group(1))
+    m = _GEETEST_V3_RE.search(html)
+    if m:
+        return CaptchaSignal(CaptchaType.GEETEST_V3, sitekey=None, gt=m.group(1), challenge=m.group(2))
     return None
 
 
 def _task_payload(signal: CaptchaSignal, page_url: str, *, proxyless: bool, min_score: float = 0.3) -> dict:
+    # GeeTest's task shape has no `websiteKey` at all (v3 sends `gt`/
+    # `challenge`, v4 sends `captchaId`) — confirmed against 2Captcha's own
+    # published API reference for GeeTestTask(Proxyless)/GeeTestV4Task
+    # (Proxyless), unlike identify_widget()'s extraction patterns above,
+    # which are NOT confirmed against a real shein.com capture.
+    if signal.captcha_type == CaptchaType.GEETEST_V4:
+        return {
+            "type": "GeeTestV4TaskProxyless" if proxyless else "GeeTestV4Task",
+            "websiteURL": page_url,
+            "captchaId": signal.captcha_id,
+        }
+    if signal.captcha_type == CaptchaType.GEETEST_V3:
+        task = {
+            "type": "GeeTestTaskProxyless" if proxyless else "GeeTestTask",
+            "websiteURL": page_url,
+            "gt": signal.gt,
+            "challenge": signal.challenge,
+        }
+        if signal.api_server:
+            task["geetestApiServerSubdomain"] = signal.api_server
+        return task
+
     type_map = {
         CaptchaType.CLOUDFLARE_TURNSTILE: "TurnstileTaskProxyless" if proxyless else "TurnstileTask",
         CaptchaType.RECAPTCHA_V2: "RecaptchaV2TaskProxyless" if proxyless else "RecaptchaV2Task",

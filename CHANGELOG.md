@@ -9,6 +9,41 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Added — 2026-09-21 (later still), GeeTest support in captcha_solver.py
+- `captcha_solver.py` gained `CaptchaType.GEETEST_V3`/`GEETEST_V4`,
+  detection patterns in `identify_widget()`, and a `_task_payload()` branch
+  that builds the correct 2Captcha task (`GeeTestTaskProxyless`/
+  `GeeTestV4TaskProxyless`, with `gt`/`challenge` or `captchaId` — no
+  `websiteKey` at all, unlike every other type this module already
+  supported). Prompted by shein.com's `/risk/challenge` incident
+  correlating with GeeTest (three circumstantial signals, see
+  `shein_parser.py`'s module docstring) and a direct question about why
+  GeeTest wasn't already supported given this repo's `--cdp-endpoint` path
+  solves captchas.
+- Fixed a real crash this surfaced in `scraper_api_client.solve_and_wait()`:
+  it only ever returned `solution.token`/`solution.gRecaptchaResponse` and
+  raised `TwoCaptchaError` on anything else — correct for every widget it
+  previously supported (a single opaque token), but GeeTest's solution is
+  several fields together (v3: `challenge`/`validate`/`seccode`; v4:
+  `captcha_id`/`lot_number`/`pass_token`/`gen_time`/`captcha_output`), so
+  every successful GeeTest solve would have raised instead of returning.
+  Now falls back to a JSON-encoded solution dict when there's no single
+  token field, with a caller-facing docstring explaining the shape
+  difference.
+- Documented, not fixed (a real, pre-existing, family-wide gap, not new):
+  no engine in this family actually injects a solved token back into a
+  locally-launched (non-`--cdp-endpoint`) page — `_maybe_solve_captcha`
+  only logs "solved". This GeeTest work makes the detection/task-building
+  plumbing correct up to that point; the injection step remains open for
+  every widget type, not just GeeTest, and needs real captured widget
+  markup (still never seen, for GeeTest or any other type, on this site)
+  to implement correctly rather than guess at.
+- `identify_widget()`'s new GeeTest patterns are explicitly marked
+  UNCONFIRMED (built from GeeTest's own public integration docs, not a
+  shein.com capture) — this incident's actual challenge widget was never
+  reached, only the `/risk/challenge` redirect shell. See README "Known
+  limitations".
+
 ### Verified live, 2026-09-21 (later the same day) — real end-to-end parse of live data
 - `shein_parser.parse_search_results()` was run for the first time against
   a genuinely fresh, real `window.gbRawData` snapshot — fetched live via

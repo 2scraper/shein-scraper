@@ -17,6 +17,7 @@ Never construct a competitor's API call from this module.
 """
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -114,8 +115,30 @@ class TwoCaptchaClient:
         return float(data["balance"])
 
     def solve_and_wait(self, task: dict, poll_interval: float = 5.0, max_wait: float = 180.0) -> str:
-        """Blocks (in small polls) until the task resolves, and returns the
-        solution token. Raises TwoCaptchaError on failure/timeout."""
+        """Blocks (in small polls) until the task resolves, and returns a
+        string the caller can use to unblock the page. Raises
+        TwoCaptchaError on failure/timeout.
+
+        For every widget this client originally supported (Turnstile,
+        reCAPTCHA v2/v3, hCaptcha), 2Captcha's `solution` is one opaque
+        token string (`token` or `gRecaptchaResponse`) — the whole widget
+        collapses to "paste this into one hidden field/callback argument".
+        GeeTest (added 2026-09-21 for captcha_solver.CaptchaType.GEETEST_V3/
+        GEETEST_V4 — see that module's docstring) does NOT: its solution is
+        several fields the page's own JS callback expects TOGETHER (v3:
+        `challenge`/`validate`/`seccode`; v4: `captcha_id`/`lot_number`/
+        `pass_token`/`gen_time`/`captcha_output`), not one string. Rather
+        than raise on every successful GeeTest solve, this method falls
+        back to returning the JSON-encoded solution dict for any task whose
+        solution has no `token`/`gRecaptchaResponse` — a caller must
+        `json.loads()` this and call the real page's GeeTest callback with
+        the parsed fields, not treat it as a single value the way every
+        other widget's return works. This is genuinely different from the
+        single-token contract this method's return type otherwise
+        promises, so a caller that only knows the old widgets can keep
+        assuming a plain opaque string; a GeeTest caller has to know to
+        parse it.
+        """
         created = self.create_task(task)
         deadline = time.monotonic() + max_wait
         while time.monotonic() < deadline:
@@ -127,9 +150,11 @@ class TwoCaptchaClient:
             if result.get("status") == "ready":
                 solution = result.get("solution", {})
                 token = solution.get("token") or solution.get("gRecaptchaResponse")
-                if not token:
-                    raise TwoCaptchaError(f"solved task carried no usable token: {solution!r}")
-                return token
+                if token:
+                    return token
+                if solution:
+                    return json.dumps(solution)
+                raise TwoCaptchaError(f"solved task carried no usable token: {solution!r}")
             time.sleep(poll_interval)
         raise TwoCaptchaError(f"solve timed out after {max_wait:.0f}s")
 
