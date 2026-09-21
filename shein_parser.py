@@ -84,6 +84,72 @@ not guessed:
     rather than a blanket rule against every request — see TESTING.md for
     what this means for a real run of THIS repo's own engines, which is
     still unconfirmed (the capture above came from a different client).
+  - **Re-investigated 2026-09-21 (later the same day), prompted by a
+    direct question — "is it really GeeTest? could there be other
+    captchas too?" — with real new findings, not just re-reading the
+    same three signals**: a fresh built-in-browser session loaded
+    `/pdsearch/dress/` and four other category searches back-to-back;
+    none redirected to `/risk/challenge` this time (consistent with the
+    "not reproducible on every request" note above — still no reliable
+    way to trigger it on demand). But the page that DID load cleanly
+    turned up two things the original capture missed:
+    1. **Google reCAPTCHA v2 is ALSO confirmed live on shein.com** — a
+       real, concrete finding, not circumstantial like the GeeTest signals
+       below: `<script src="https://www.google.com/recaptcha/api.js">`
+       plus a gstatic `recaptcha__ru.js` release script are both loaded on
+       an ordinary search page; `window.grecaptcha` is a live object with
+       the standard v2 method set (`render`/`execute`/`getResponse`/
+       `reset`/`ready` — confirmed NOT `.enterprise`); and a real sitekey,
+       `window.gbCommonInfo.GOOGLE_VERIFY_SITEKEY =
+       "6LcoBR4UAAAAAIi5xU3U_q37C3nFaSckeMaT-P5j"`, sits in the page's own
+       global config object rather than in any static markup. The
+       `GOOGLE_VERIFY` naming suggests this is wired for an account/login
+       anti-abuse flow (`/user/auth/login`, robots.txt-allowed, loaded
+       with no visible widget either — it's presumably rendered
+       programmatically after a suspicious attempt, not on page load) more
+       than the generic search/product bot-wall this repo actually
+       scrapes — but it is a real, confirmed second vendor on this site,
+       already fully supported by `captcha_solver.py` (it always was;
+       reCAPTCHA v2 predates the GeeTest work). The one real gap this
+       exposed was in DETECTION, not solving: `identify_widget()`'s old
+       reCAPTCHA v2 pattern only matched a static `<div class="g-recaptcha"
+       data-sitekey="...">`, which never appears here — the sitekey only
+       ever lives in that JS config var. Fixed the same day: a fallback in
+       `captcha_solver.py` searches for reCAPTCHA's own fixed, distinctive
+       sitekey shape (`6L` + 38 more characters, 40 total) anywhere on the
+       page, gated on the v2 loader script actually being present. See
+       `captcha_solver.py`'s own comment on `_RECAPTCHA_SITEKEY_ANYWHERE_RE`
+       and its `smoke_test.py` regression check.
+    2. **A previously-undocumented, apparently proprietary risk/
+       fingerprinting layer, branded "Armor"**, loads on every ordinary
+       page regardless of whether a challenge fires:
+       `https://armor.ltwebstatic.com/she_dist/armor-libs/infp/
+       infp.3.13.1.min.js` and a separate device-fingerprint SDK,
+       `https://sc.ltwebstatic.com/she_dist/libs/devices/fpv2.7.js`, which
+       calls `GET /devices/v3/profile/web?organization=
+       FPNyuLhAtVnAeldjikus&smdata=<opaque>&callback=smCB_...` (JSONP) and
+       a separate `POST /risk/verify/identity/validation/publish/sign/
+       rule`. Both scripts are minified/obfuscated with no plaintext
+       vendor name in them (checked directly — no "geetest", "shumei", or
+       "recaptcha" string anywhere in `fpv2.7.js`'s ~188KB), so the
+       fingerprinting vendor behind "Armor" is genuinely UNDETERMINED, not
+       just unconfirmed — could be in-house, could be a white-labeled
+       third party. The plausible read: this fingerprint/risk layer runs
+       silently on every request and decides WHETHER to show
+       `/risk/challenge` at all, with whatever widget appears there
+       (GeeTest, reCAPTCHA, something else, or nothing at all if the score
+       is high enough) as a step-up challenge behind it, not the first
+       line of defense itself. This reframes but does not resolve the
+       original question: the actual interactive widget shown inside a
+       real `/risk/challenge` page is still uncaptured, for any vendor.
+    Net effect on confidence: GeeTest is still the best-supported guess for
+    what (if anything) `/risk/challenge` actually shows — unchanged from
+    before, still three circumstantial signals, no live capture — but it
+    is demonstrably not the ONLY captcha-shaped thing on this site, and
+    this repo's own detector had a real, now-fixed blind spot for the one
+    OTHER vendor (reCAPTCHA v2) that turned out to be concretely
+    confirmed. See README "Known limitations" for the user-facing version
+    of this.
   - **Still UNCONFIRMED**: whether scrolling a `/pdsearch/` page past its
     first SSR-embedded batch (confirmed 20 products per initial
     `gbRawData` snapshot, out of e.g. 17,059 total matches for one real

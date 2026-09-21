@@ -381,6 +381,45 @@ def _():
     assert signal.sitekey == "0x4AAA_example"
 
 
+@check("captcha_solver.identify_widget finds a reCAPTCHA v2 sitekey that lives in a JS config var, not static markup (added 2026-09-21, live on shein.com — see README 'Known limitations')")
+def _():
+    # Real shape confirmed live via the built-in browser tool, 2026-09-21,
+    # in direct response to Roman asking whether other captcha vendors
+    # might be in play besides the suspected GeeTest one: shein.com loads
+    # https://www.google.com/recaptcha/api.js and has a live
+    # window.grecaptcha v2 object (render/execute/getResponse/reset/
+    # ready — confirmed NOT .enterprise) on every ordinary page, but the
+    # real sitekey (window.gbCommonInfo.GOOGLE_VERIFY_SITEKEY =
+    # "6LcoBR4UAAAAAIi5xU3U_q37C3nFaSckeMaT-P5j") lives only in a JS
+    # config object, never in a static `<div class="g-recaptcha"
+    # data-sitekey="...">` — the ONLY shape _SITEKEY_PATTERNS[RECAPTCHA_V2]
+    # could see before this fix, meaning the old code would have silently
+    # never even DETECTED this real, live, confirmed captcha vendor.
+    html = (
+        '<script src="https://www.google.com/recaptcha/api.js" async></script>'
+        '<script>window.gbCommonInfo = {"GOOGLE_VERIFY_SITEKEY":'
+        '"6LcoBR4UAAAAAIi5xU3U_q37C3nFaSckeMaT-P5j","OTHER_KEY":1};</script>'
+    )
+    signal = captcha_solver.identify_widget(html)
+    assert signal is not None, "must detect the sitekey even though it's not in static markup"
+    assert signal.captcha_type == captcha_solver.CaptchaType.RECAPTCHA_V2
+    assert signal.sitekey == "6LcoBR4UAAAAAIi5xU3U_q37C3nFaSckeMaT-P5j"
+
+    # The v3 loader (sitekey in the `render=` query param) must still win
+    # when it's the one actually present — this fallback must not steal
+    # v3's own, more specific signal.
+    html_v3 = '<script src="https://www.google.com/recaptcha/api.js?render=6LcoBR4UAAAAAIi5xU3U_q37C3nFaSckeMaT-P5j"></script>'
+    signal_v3 = captcha_solver.identify_widget(html_v3)
+    assert signal_v3.captcha_type == captcha_solver.CaptchaType.RECAPTCHA_V3
+
+    # No false positive: a sitekey-shaped string with no recaptcha loader
+    # anywhere on the page must not fire — this is a fallback GATED on the
+    # loader being present, not an unconditional sitekey-shaped-string
+    # scan of the whole page.
+    html_no_loader = "<p>unrelated id 6LcoBR4UAAAAAIi5xU3U_q37C3nFaSckeMaT-P5j in some other context</p>"
+    assert captcha_solver.identify_widget(html_no_loader) is None
+
+
 @check("captcha_solver GeeTest support (added 2026-09-21, see module docstring): v4 and v3 both identify and build the correct 2Captcha task")
 def _():
     # These two HTML shapes are UNCONFIRMED best-effort (GeeTest's own

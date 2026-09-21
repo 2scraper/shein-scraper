@@ -279,6 +279,39 @@ since these are properties of the drivers, not the site):
   own content is a normal-looking SHEIN shell, not vendor-identifiable
   widget markup — so unlike every other family member's incident, these
   extra markers are load-bearing, not corroboration.
+- **GeeTest is a suspect, not the confirmed answer — reCAPTCHA v2 is ALSO
+  real and live on this site, and there's a third, undetermined layer too**
+  (re-investigated 2026-09-21, later the same day, prompted directly by
+  Roman asking whether GeeTest is really it and whether other vendors
+  might be in play — see `shein_parser.py`'s module docstring for the
+  full write-up). A fresh live session found: (1) Google reCAPTCHA v2 is
+  genuinely, concretely confirmed on shein.com — real script tags
+  (`google.com/recaptcha/api.js`), a live `window.grecaptcha` v2 object,
+  and a real sitekey (`window.gbCommonInfo.GOOGLE_VERIFY_SITEKEY`) — much
+  stronger evidence than GeeTest's three circumstantial signals, though
+  its `GOOGLE_VERIFY` naming points more at account/login anti-abuse than
+  the generic search-page wall this repo scrapes. This exposed a real,
+  now-fixed detection gap: the sitekey lives only in a JS config
+  variable, never in the static `<div class="g-recaptcha"
+  data-sitekey="...">` markup `identify_widget()` used to require —
+  `captcha_solver.py` now also matches reCAPTCHA's own distinctive
+  sitekey shape anywhere on the page, gated on the v2 loader being
+  present (see `_RECAPTCHA_SITEKEY_ANYWHERE_RE`). (2) A third,
+  previously-undocumented risk/fingerprinting layer, apparently
+  proprietary and branded "Armor" (`armor.ltwebstatic.com`,
+  `sc.ltwebstatic.com/.../devices/fpv2.7.js` calling `/devices/v3/
+  profile/web` and `/risk/verify/identity/validation/publish/sign/rule`),
+  runs on every page — obfuscated, no plaintext vendor string found in
+  it, so genuinely UNDETERMINED whether it's in-house or a white-labeled
+  third party. The likely shape: this layer silently scores every
+  request and decides whether to show `/risk/challenge` at all, with
+  whichever widget (if any) appears there as a step-up behind it — which
+  still hasn't been captured live, for any vendor, despite five more
+  rapid category searches in this session that didn't reproduce the
+  redirect. Net: GeeTest is still the best-supported specific guess for
+  `/risk/challenge` itself, but it's demonstrably not the only
+  captcha-shaped thing on this site, and this repo's coverage of the one
+  OTHER concretely-confirmed vendor is now solid rather than blind to it.
 - **`captcha_solver.py` can now build a 2Captcha task for GeeTest** (added
   2026-09-21 — `CaptchaType.GEETEST_V3`/`GEETEST_V4`), since shein.com's
   gateway is suspected (not confirmed — see above) to use it. One real gap

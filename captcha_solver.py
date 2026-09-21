@@ -96,6 +96,30 @@ _SITEKEY_PATTERNS = {
 _RECAPTCHA_V3_LOADER_RE = re.compile(r"recaptcha/api\.js\?render=([\w-]+)")
 _RECAPTCHA_EXPLICIT_LOADER_RE = re.compile(r"recaptcha/api\.js\?render=explicit")
 
+# reCAPTCHA v2's sitekey doesn't always ship as static `<div class="g-
+# recaptcha" data-sitekey="...">` markup, the only shape
+# `_SITEKEY_PATTERNS[RECAPTCHA_V2]` above can see — CONFIRMED live on
+# shein.com, 2026-09-21 (see README "Known limitations" and Roman's own
+# question about whether other captcha vendors are in play): the site
+# loads `https://www.google.com/recaptcha/api.js` and has a live
+# `window.grecaptcha` v2 object (`render`/`execute`/`getResponse`/
+# `reset`/`ready` — not `.enterprise`) on every normal page, but the
+# sitekey itself lives in a JS config object under a site-chosen key
+# name (`window.gbCommonInfo.GOOGLE_VERIFY_SITEKEY`), presumably handed
+# to `grecaptcha.render()` programmatically later (e.g. after a
+# suspicious login attempt) rather than rendered into the initial HTML
+# at all. The static-markup regex above would silently MISS this real,
+# live sitekey — a real detection gap, not a hypothetical one. reCAPTCHA
+# sitekeys have a fixed, distinctive shape regardless of what variable
+# or markup carries them (`6L` + 38 more URL-safe-base64 characters, 40
+# total, confirmed against Google's own documented format and against
+# shein.com's actual `6LcoBR4UAAAAAIi5xU3U_q37C3nFaSckeMaT-P5j`) — so
+# this searches for that shape ANYWHERE in the page, gated on the v2
+# loader actually being present so it can't misfire on an unrelated
+# 40-character token elsewhere that happens to start with "6L".
+_RECAPTCHA_SITEKEY_ANYWHERE_RE = re.compile(r"\b(6L[\w-]{38})\b")
+_RECAPTCHA_V2_LOADER_RE = re.compile(r"recaptcha/api\.js")
+
 # GeeTest — added 2026-09-21 after shein.com's own risk gateway
 # (captcha_type=909, see shein_parser.BOT_CHALLENGE_MARKERS) correlated
 # with GeeTest via three circumstantial signals documented in
@@ -186,6 +210,13 @@ def identify_widget(html: str) -> Optional[CaptchaSignal]:
         m = pattern.search(html)
         if m:
             return CaptchaSignal(ctype, sitekey=m.group(1))
+    # Fallback for a reCAPTCHA v2 sitekey that isn't in static markup at
+    # all — see _RECAPTCHA_SITEKEY_ANYWHERE_RE's module-level comment for
+    # the live shein.com evidence this closes a real gap for.
+    if _RECAPTCHA_V2_LOADER_RE.search(html):
+        m = _RECAPTCHA_SITEKEY_ANYWHERE_RE.search(html)
+        if m:
+            return CaptchaSignal(CaptchaType.RECAPTCHA_V2, sitekey=m.group(1))
     # GeeTest — v4 first (current-generation; see the UNCONFIRMED note on
     # the patterns themselves, above).
     for pattern in _GEETEST_V4_ID_PATTERNS:

@@ -9,6 +9,66 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Fixed — 2026-09-21 (later still, same day), a real reCAPTCHA v2 detection gap; documented a new undetermined risk-fingerprint layer
+- Prompted directly by Roman asking "точно ли гитест там? может еще какие
+  то капчи есть?" (is it really GeeTest there? maybe there are other
+  captchas too?) after the injection work above shipped — went back to a
+  fresh live browser session against shein.com to check, rather than
+  re-reading the existing three circumstantial GeeTest signals.
+- **Found real, concrete evidence Google reCAPTCHA v2 is ALSO live on
+  shein.com** — not circumstantial like GeeTest: an actual
+  `google.com/recaptcha/api.js` script tag, a live `window.grecaptcha` v2
+  object (`render`/`execute`/`getResponse`/`reset`/`ready`, confirmed NOT
+  `.enterprise`), and a real sitekey
+  (`window.gbCommonInfo.GOOGLE_VERIFY_SITEKEY =
+  "6LcoBR4UAAAAAIi5xU3U_q37C3nFaSckeMaT-P5j"`) sitting in the page's own
+  JS config object. This exposed a genuine, previously-undetected gap:
+  `captcha_solver.identify_widget()`'s reCAPTCHA v2 pattern only matched
+  a static `<div class="g-recaptcha" data-sitekey="...">`, which never
+  appears on this site — the sitekey only ever lives in that JS variable,
+  presumably handed to `grecaptcha.render()` programmatically later. The
+  old code would have silently never detected this real, live vendor at
+  all, meaning it could never even attempt to solve it.
+- **Fixed**: `captcha_solver.py` gained
+  `_RECAPTCHA_SITEKEY_ANYWHERE_RE` — reCAPTCHA's own sitekey shape (`6L`
+  + 38 more URL-safe-base64 characters, 40 total, confirmed against
+  Google's documented format and against shein.com's own real sitekey)
+  searched for ANYWHERE on the page, gated on the v2 loader script
+  actually being present so it can't misfire on an unrelated
+  40-character token elsewhere. `identify_widget()` tries this as a
+  fallback after the existing static-markup patterns, so a page that DOES
+  render static markup is unaffected and the v3 `render=` loader still
+  takes priority when it's the one present. A new `smoke_test.py` check
+  (53/53 total, up from 52) reproduces the real page shape and asserts
+  the fallback fires correctly, the v3-priority and static-markup paths
+  are unaffected, and there's no false positive without the loader
+  present.
+- **Documented, not solvable from static analysis alone**: a third,
+  previously-undocumented risk/fingerprinting layer, apparently
+  proprietary and branded "Armor" (`armor.ltwebstatic.com`, a device-
+  fingerprint SDK at `sc.ltwebstatic.com/.../devices/fpv2.7.js` calling
+  `/devices/v3/profile/web` and a separate `/risk/verify/identity/
+  validation/publish/sign/rule` endpoint), runs on every ordinary page
+  load regardless of whether a challenge ever fires. Both scripts are
+  minified/obfuscated with zero plaintext vendor markers found in them
+  (checked directly — no "geetest"/"shumei"/"recaptcha" string anywhere
+  in the ~188KB fingerprint script), so the vendor behind it is genuinely
+  UNDETERMINED, not just unconfirmed. Read as: this layer likely scores
+  every request silently and decides whether `/risk/challenge` fires at
+  all, with whatever widget (if any) appears there as a step-up behind
+  it — which still means the actual interactive widget inside a real
+  `/risk/challenge` page remains uncaptured, for any vendor. Five more
+  rapid category searches in this session did not reproduce the
+  redirect, consistent with the original incident's own "not
+  reproducible on every request" note.
+- Net effect: GeeTest remains the best-supported specific guess for what
+  `/risk/challenge` itself shows (unchanged — still three circumstantial
+  signals, still no live capture of the actual widget), but this work
+  closes a real blind spot in coverage of the one OTHER vendor that
+  turned out to be concretely confirmed, and documents a third layer this
+  repo previously didn't know existed. See README "Known limitations"
+  and `shein_parser.py`'s module docstring for the full write-up.
+
 ### Added — 2026-09-21 (later still, same day), captcha solution injection into the page
 - Closes the gap the GeeTest work below flagged without fixing: every
   engine's `_maybe_solve_captcha` got a solved token/solution back from
