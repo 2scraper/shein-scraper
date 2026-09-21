@@ -4,12 +4,27 @@
 knowledge in `shein_parser.py` already comes from a real, live browser
 capture (search/category via `window.gbRawData`, product-detail via
 schema.org `ProductGroup` JSON-LD, and the `/risk/challenge` bot-mitigation
-incident — see README "Read this before trusting a run"). **What has NOT
-yet happened is a live run of this repo's own engines** — the capture came
-from a browser-rendering tool driving real pages, not from
+incident — see README "Read this before trusting a run"). **Updated later
+the same day**: `shein_parser.parse_search_results()` has now also been run
+against a second, fresh real capture end-to-end through
+`output_writer.finish_run()` — 10/10 real products, `status=complete`, exit
+`0` (see `CHANGELOG.md` and `tests/fixtures/shein_search_live_dress_
+20260921.json`). **What has still NOT happened is a live run of this
+repo's own engine scripts** — both real captures so far came from a
+browser-rendering tool driving real pages directly, not from
 `playwright_scraper.py`/`selenium_scraper.py`/`puppeteer_scraper.py`
-themselves. That first live engine run is this repo's single highest-value
-remaining check.
+themselves. Attempting that live engine run surfaced a concrete blocker,
+not just an untried step: **the environments this repo has been built and
+synced to both currently block the network calls an engine run needs** —
+a plain HTTPS request to `us.shein.com` gets `403 blocked-by-allowlist`
+from the egress proxy in both the cloud build environment and the linked
+device's own shell, and `playwright install chromium` fails the same way
+trying to download the browser binary from `cdn.playwright.dev`. This is
+an environment/network-policy gap, not a bug in the scraper — the fix is
+either widening the relevant allowlist (ask whoever manages it to add
+`us.shein.com`, `cdn.playwright.dev`, and `googlechromelabs.github.io`) or
+running the commands below from a machine that isn't behind that policy.
+Closing this gap is this repo's single highest-value remaining check.
 
 Still requiring live verification: all three engines end-to-end, whether
 scroll-driven pagination actually grows `window.gbRawData` past its first

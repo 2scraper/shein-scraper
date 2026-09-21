@@ -1,0 +1,4157 @@
+{
+  "_provenance": "REAL capture, not synthetic. Fetched 2026-09-21 via the built-in browser pane navigating a real https://us.shein.com/pdsearch/dress/ search (query 'dress'), by reading window.gbRawData directly out of the live page after it rendered (no /risk/challenge redirect this time). Trimmed to the first 10 of that batch's 20 products. Used to confirm shein_parser.parse_search_results() end-to-end against genuinely fresh live data, not just the synthetic fixtures in smoke_test.py -- see TESTING.md / CHANGELOG.md for the result (10/10 products parsed, output_writer.finish_run() exit 0, status=complete, price_confirmed_pct=1.0).",
+  "currency": "USD",
+  "results": {
+    "sum": 17006,
+    "bffProductsInfo": {
+      "result_count": 17006,
+      "products": [
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/05/e5/17779561711796287a3ee2b75d658dffa674491ed4.jpg",
+          "fromSkuCode": "I0mpqpoa43cejq",
+          "brandCode": "18niu",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "1",
+          "priority": "1",
+          "spu": "z2604150920519100",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 460570094, goodsSn| sz260415092051910025867, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "460570094",
+          "goods_sn": "sz260415092051910025867",
+          "productRelationID": "z2604150920519100",
+          "goods_img": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/db/17784844704a2b98693478f0b77f43831d63d078f6_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/05/9f/17779561669aee595ec12f52f15bb6d9ebedf83114_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/11/b5/1778484472939838e067948da38fe93ae5207cdfb0_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Louniche Women's Summer Blue And White Stripe Round Neck Waist Gathered Maxi Dress,Elegant Holiday Vacation Holiday,Casual Resort Style Street Outfit",
+          "goods_url_name": "Louniche-Women-s-Summer-Blue-And-White-Stripe-Round-Neck-Waist-Gathered-Maxi-Dress-Elegant-Holiday-Vacation-Holiday-Casual-Resort-Style-Street-Outfit",
+          "cat_id": "12476",
+          "cate_name": "Women Long Dresses",
+          "stock": "1",
+          "store_code": "7321329149",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "15.89",
+            "amountWithSymbol": "$15.89",
+            "usdAmount": "15.89",
+            "usdAmountWithSymbol": "$15.89",
+            "priceShowStyle": "15"
+          },
+          "salePrice": {
+            "amount": "9.93",
+            "amountWithSymbol": "$9.93",
+            "usdAmount": "9.93",
+            "usdAmountWithSymbol": "$9.93",
+            "priceShowStyle": "9"
+          },
+          "discountPrice": {
+            "amount": "5.96",
+            "amountWithSymbol": "$5.96",
+            "usdAmount": "5.96",
+            "usdAmountWithSymbol": "$5.96",
+            "priceShowStyle": "5"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "5.96",
+            "amountWithSymbol": "$5.96",
+            "usdAmount": "5.96",
+            "usdAmountWithSymbol": "$5.96",
+            "priceShowStyle": "5"
+          },
+          "retailDiscountPercent": "38",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "38",
+          "original_discount": "11",
+          "promotionInfo": [
+            {
+              "typeId": "31",
+              "dsaEndTime": "Valid before Sep 30, 23:59",
+              "startTimestamp": "1789920000",
+              "id": "101559063",
+              "mall_code": "1",
+              "mall_code_list": [
+                "1",
+                "2"
+              ],
+              "category_info": [],
+              "every_body_price_type": "1",
+              "endTime": "2026-09-30 23:59:59",
+              "isReturn": "1",
+              "endTimestamp": "1790783999",
+              "isFullShop": "0",
+              "isDeletePromotion": "0",
+              "isAddBuy": "",
+              "singleNum": "0",
+              "singleRemainNum": "",
+              "saleNumScene": "",
+              "buyLimitType": "",
+              "language_key": "",
+              "aggregateMemberResult": {},
+              "promotionActivityPriority": 0,
+              "promotion_logo_type": "9",
+              "rules": [
+                {
+                  "type": 5,
+                  "value": 0,
+                  "discount": {
+                    "type": 16,
+                    "value": 0,
+                    "enjoy_goods_num": 0,
+                    "value_amount": {
+                      "amount": "0.0",
+                      "amountWithSymbol": "$0.00",
+                      "usdAmount": "0.00",
+                      "usdAmountWithSymbol": "$0.00"
+                    },
+                    "gift_coupons": []
+                  },
+                  "value_amount": {
+                    "amount": "0",
+                    "amountWithSymbol": "$0.00",
+                    "usdAmount": "0.00",
+                    "usdAmountWithSymbol": "$0.00"
+                  },
+                  "max_discount": 0,
+                  "max_discount_amount": {
+                    "amount": "0.00",
+                    "amountWithSymbol": "$0.00",
+                    "usdAmount": "0.00",
+                    "usdAmountWithSymbol": "$0.00",
+                    "priceShowStyle": "0"
+                  },
+                  "delivery_id": null
+                }
+              ],
+              "subject": "1",
+              "channelType": "0",
+              "categoryInfo": [],
+              "pool_list": [],
+              "max_discount_convert_by_app_currency": {
+                "amount": "0.00",
+                "amountWithSymbol": "$0.00",
+                "usdAmount": "0.00",
+                "usdAmountWithSymbol": "$0.00",
+                "priceShowStyle": "0"
+              }
+            }
+          ],
+          "premiumFlagNew": {
+            "brandId": "110559",
+            "productRecommendByGroup": 0,
+            "secondSeriesId": "842",
+            "brandSeriesType": "1",
+            "brand_badge_name": "Louniche",
+            "brand_logo_url_left": "https://img.ltwebstatic.com/v4/p/pics1/2025/08/12/63/175498650236da4f990490398d979ae353e004bf92.png",
+            "brand_code": "18niu",
+            "series_badge_name": "Louniche",
+            "seriesId": "11024",
+            "brandName": "Louniche"
+          },
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/30/52/1780141562c853209b32ee068c54ac5f5d7ba91b16.jpg",
+              "goods_id": "460570094",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/09/b5/1783567766415d0728d5e06dc498433c37f51899fb.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/21/97/1782050470d59aeb0c20e416981e82defb14ac341c.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/30/21/1780141577dc53075f1815a6b418b599d2c8f6d10b.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/21/0d/17820507410ddab499371296609a2ab84557033cf4.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/21/1a/178205047329ad8a0663c26c31071dea42f696eff5.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/30/be/17801415670a15458bf523dbe22b5d264ebf1944d5.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/30/84/1780141578881cbfd8727175854fa389bb8cd6dbf7.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/05/e5/17779561711796287a3ee2b75d658dffa674491ed4.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/16/44/17815989029e8a5885f3248767f845e8b0135b61be.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/08/0a/178088857201d3a513ab59e198daf91d13f8fedd58.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/16/49/1784186639940636bd799bbfd28e0be2f5c804470b.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/09/3c/178356776089a1eefcac8336bb7b8e355d791b8202.jpg",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": null
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/db/17784844704a2b98693478f0b77f43831d63d078f6_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/05/9f/17779561669aee595ec12f52f15bb6d9ebedf83114_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/b5/1778484472939838e067948da38fe93ae5207cdfb0_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/db/17784844704a2b98693478f0b77f43831d63d078f6_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/db/17784844704a2b98693478f0b77f43831d63d078f6_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/db/17784844704a2b98693478f0b77f43831d63d078f6_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "upperLeftPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "subscript",
+                "displayType": "brand_image",
+                "image": "https://img.ltwebstatic.com/v4/p/pics1/2025/08/12/63/175498650236da4f990490398d979ae353e004bf92.png",
+                "appTraceInfo": "lu_corner_mark_brand_image_110559"
+              }
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "2.2k+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_2.2k+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "trendLabel": {
+              "trendIpImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpBigImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpLang": "Top Trends",
+              "trendLabel": {
+                "borderColor": null,
+                "borderWidth": null,
+                "labelName": "#VacayVibes",
+                "bgColor": "#F4EFFF",
+                "fontColor": "#9462FF",
+                "icon": null,
+                "iconType": null
+              },
+              "routingUrl": "/sales/trend_landing_page?data=%7B%22top_goods_id%22%3A%22460570094%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendtag_entry%22%2C%22product_select_id%22%3A%225047073%22%2C%22goodsId%22%3A%22460570094%22%2C%22cate_ids%22%3A%2212476%22%2C%22productSelectId_scUrlId%22%3A%225047073_1585047073%22%2C%22trend_word_id%22%3A%225203%22%7D",
+              "contentRoutingUrl": "/sales/trend_landing_page?data=%7B%22top_goods_id%22%3A%22460570094%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendtag_entry%22%2C%22product_select_id%22%3A%225047073%22%2C%22goodsId%22%3A%22460570094%22%2C%22cate_ids%22%3A%2212476%22%2C%22productSelectId_scUrlId%22%3A%225047073_1585047073%22%2C%22trend_word_id%22%3A%225203%22%7D",
+              "appTraceInfo": "trend_tag_5203|product_select_id_5047073",
+              "showPosition": "aboveTitle",
+              "displayDesc": "Breezy fits & effortless styles made for every getaway.",
+              "trendWordId": "5203",
+              "trendShopCode": "-",
+              "productSelectId": "5047073",
+              "productSelectUrlId": "1585047073",
+              "trendType": "trend",
+              "carrierType": "61",
+              "highEffect": "0",
+              "carrierTypeName": "选品主题",
+              "contentCarrierId": "5047073",
+              "carrierSubTypeName": "潮流趋势",
+              "sceneId": "-",
+              "carrierSubType": "62"
+            },
+            "v2ProductAttributeLabelList": [],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$9.93",
+              "usdAmount": null,
+              "priceShowStyle": "9",
+              "discountPercent": "38",
+              "discountPrice": "$5.96",
+              "description": null,
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_9.93|pri_15.89",
+                "isFlashSale": "0",
+                "otherMarks": null,
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "promotion_id_101559063|price_show_I0mpqpoa43cejq"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_num_show": "100+",
+          "comment_rank_average": "4.23",
+          "comment_num": 300,
+          "percent_overall_fit": {
+            "true_size": "78%",
+            "large": "9%",
+            "small": "13%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|roi_22143|rdg_6|gfc99|gfc83|gfc61|ft_331|rs_4|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.013844_v3847-us|ctr_0.014754_v3847-us|abr_0.177134_v3847-us|cvr_0.037883_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.007933|gdup_8.649487|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.598969>keyword_script_hot>all_words_expand_script_hot>operation_newuser_v2>all_words_new_user_v5>search_nearline@mmd_65727",
+            "fine_mark": "0_fs_1.0_3349",
+            "rough_mark": "0_prs_5.6326E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/db/17784844704a2b98693478f0b77f43831d63d078f6_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [
+              {
+                "typeId": 31,
+                "sortIndex": 20
+              }
+            ],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 0,
+          "detail_url": "/Louniche-Women-s-Summer-Blue-And-White-Stripe-Round-Neck-Waist-Gathered-Maxi-Dress-Elegant-Holiday-Vacation-Holiday-Casual-Resort-Style-Street-Outfit-p-460570094.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_460570094%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/26/11/176940448623b7a43a32d01899ab37d451fab7d072.jpg",
+          "fromSkuCode": "I7mjqj5ad1pix4",
+          "brandCode": "1blsm",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "0",
+          "priority": "1",
+          "spu": "z250425908664",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 387752092, goodsSn| sz25042590866489979, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "387752092",
+          "goods_sn": "sz25042590866489979",
+          "productRelationID": "z250425908664",
+          "goods_img": "//img.ltwebstatic.com/v4/j/pi/2026/01/26/17/17694044749b9c4958123a25b91bd6485e8c0cdbc8_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/26/db/1769404476a5c9e7dec8392c0e928eba94e7448159_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/26/72/1769404477571152ddcd2ad27ee504cc10ad5b7c49_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/26/1f/1769404479716e6653fdcb04bf718066a72257e4eb_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/26/3f/17694044807f84cd9ed04fc2bf1af9375f2b505f2f_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/26/cd/176940448224c2693f627cf3692d9dda699ca6674a_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/26/fb/1769404484900d5c1cc86cae412521937c932cb6f7_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Aloruh Women's Elegant Light Yellow Halter Tie Mini Dress",
+          "goods_url_name": "Aloruh-Women-s-Elegant-Light-Yellow-Halter-Tie-Mini-Dress",
+          "cat_id": "12475",
+          "cate_name": "Women Mini Dresses",
+          "stock": "1",
+          "store_code": "4534970445",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "23.79",
+            "amountWithSymbol": "$23.79",
+            "usdAmount": "23.79",
+            "usdAmountWithSymbol": "$23.79",
+            "priceShowStyle": "23"
+          },
+          "salePrice": {
+            "amount": "21.09",
+            "amountWithSymbol": "$21.09",
+            "usdAmount": "21.09",
+            "usdAmountWithSymbol": "$21.09",
+            "priceShowStyle": "21"
+          },
+          "discountPrice": {
+            "amount": "2.70",
+            "amountWithSymbol": "$2.70",
+            "usdAmount": "2.70",
+            "usdAmountWithSymbol": "$2.70",
+            "priceShowStyle": "2"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "2.70",
+            "amountWithSymbol": "$2.70",
+            "usdAmount": "2.70",
+            "usdAmountWithSymbol": "$2.70",
+            "priceShowStyle": "2"
+          },
+          "retailDiscountPercent": "11",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "11",
+          "original_discount": "11",
+          "premiumFlagNew": {
+            "brandId": "78904",
+            "productRecommendByGroup": 0,
+            "secondSeriesId": "269",
+            "brandSeriesType": "1",
+            "brand_badge_name": "Aloruh",
+            "brand_logo_url_left": "https://img.ltwebstatic.com/images3_ps1/2024/10/10/4c/1728541643ad984947f082b053362508398157e17a.png",
+            "brand_code": "1blsm",
+            "series_badge_name": "Aloruh",
+            "seriesId": "8289",
+            "brandName": "Aloruh"
+          },
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2025/12/15/39/1765776755c386c5b476829c32819ed4f3c5440fc4.jpg",
+              "goods_id": "387752092",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/03/19/1e/17739116924e116c9b3d4e0af53cbf01c79f55c57d.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/29/13/1769670882d206a60bc9d01e08ba23700685dc0177.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/02/02/17/17700225562b3363b39a7a8f0255c0c531f767b64e.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/26/ee/1769404549c6e082bc07ed9f4eee5be477b04718fc.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/05/1778476393e21d0d30ab1e2baf238b9e800388a41c.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/26/02/176940457301b8b1175714f5232a81582ce9a8419f.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/03/19/93/1773911703f2aca46c26f0af8308904a3a607caeac.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/dps/PS202609096036/50cbfcbce35f2afd1e156d4ed985e0feeea43b4572d2c2b505eec2e1eedb6b9b_square.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/26/11/176940448623b7a43a32d01899ab37d451fab7d072.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/04/2a/176752503232e69d7a9cce0df043bb6ee2f70171f7.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/27/ae/1769480255a82b80c31380cc266350120df10acac2.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2025/12/10/0d/176534490782fdc678f994b00546cf704ae1e5e59f.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/dps/PS2026090320862/440447736f6306f8c3ddcf56e679898d3314d633a9a46e6abe51630d3053e10a_square.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/02/03/9f/177010630398981d5750118bfb5aa75a2e5bff69c4.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2025/09/11/bf/175757293681863b43a5e90bc21a95ba776ac40fc0.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/06/6c/17780588491fba26a03b8a8be66290cea8e8fc6999.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/03/19/84/17739116351e5d00bfa685a5159e69c9acc3e9c1b4.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2025/08/20/15/1755659721dc650ca5a8266eb476147d5ec853c993.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/11/ca/17811749858d918b318c8e8195c8886865e8c5b46e.jpg",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": {
+                "materialValueKey": "custom",
+                "component": "general",
+                "discountPrice": null,
+                "bgImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/0c/17898753100c0f46471ee40bda8880638194045446.png",
+                "bgImageSize": {
+                  "width": "340",
+                  "height": "40"
+                },
+                "shapedImage": null,
+                "shapedImageSize": null,
+                "shapedBgImage": null,
+                "bigCardBgImage": null,
+                "bigCardBgImageSize": null,
+                "bigCardShapedImage": null,
+                "bigCardShapedImageSize": null,
+                "saveLabelLang": null,
+                "saveFontColor": null,
+                "labelLang": "Save $2.70",
+                "secondLabelLang": null,
+                "fontColor": "#FFFFFF",
+                "backgroundColor": null,
+                "appTraceInfo": "belt_600533534",
+                "endTime": null,
+                "icon": null,
+                "transparentImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/52/1789875313d8f669cdc3356868daacbe3958a99d1b.png",
+                "transparentImageSize": {
+                  "width": "215",
+                  "height": "40"
+                },
+                "bigCardTransparentImage": null,
+                "bigCardTransparentImageSize": null,
+                "emphasizedText": null,
+                "currentTime": null
+              }
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/26/17/17694044749b9c4958123a25b91bd6485e8c0cdbc8_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/26/db/1769404476a5c9e7dec8392c0e928eba94e7448159_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/26/72/1769404477571152ddcd2ad27ee504cc10ad5b7c49_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/26/1f/1769404479716e6653fdcb04bf718066a72257e4eb_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/26/3f/17694044807f84cd9ed04fc2bf1af9375f2b505f2f_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/26/cd/176940448224c2693f627cf3692d9dda699ca6674a_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/26/fb/1769404484900d5c1cc86cae412521937c932cb6f7_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/26/17/17694044749b9c4958123a25b91bd6485e8c0cdbc8_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/26/17/17694044749b9c4958123a25b91bd6485e8c0cdbc8_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/26/17/17694044749b9c4958123a25b91bd6485e8c0cdbc8_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "upperLeftPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "subscript",
+                "displayType": "brand_image",
+                "image": "https://img.ltwebstatic.com/images3_ps1/2024/10/10/4c/1728541643ad984947f082b053362508398157e17a.png",
+                "appTraceInfo": "lu_corner_mark_brand_image_78904"
+              }
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "1.4k+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_1.4k+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "trendLabel": {
+              "trendIpImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpBigImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpLang": "Top Trends",
+              "trendLabel": {
+                "borderColor": null,
+                "borderWidth": null,
+                "labelName": "Aloruh",
+                "bgColor": "#F4EFFF",
+                "fontColor": "#9462FF",
+                "icon": "https://img.ltwebstatic.com/images3_ccc/2024/07/25/0c/17218992763c90c1e58652d3c3ae23be19490aecc4.png",
+                "iconType": "new"
+              },
+              "routingUrl": "/store/home?data=%7B%22store_code%22%3A%224534970445%22%2C%22top_goods_id%22%3A%22387752092%22%2C%22main_goods_id%22%3A%22387752092%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendshop_entry%22%2C%22tab%22%3A%22items%22%2C%22scroll_index%22%3A%220%22%2C%22main_cate_id%22%3A%2212475%22%2C%22refer_trigger_point%22%3A%22goods_card%22%2C%22refer_scene%22%3A%22search%22%7D",
+              "contentRoutingUrl": "/store/home?data=%7B%22store_code%22%3A%224534970445%22%2C%22top_goods_id%22%3A%22387752092%22%2C%22main_goods_id%22%3A%22387752092%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendshop_entry%22%2C%22tab%22%3A%22items%22%2C%22scroll_index%22%3A%220%22%2C%22main_cate_id%22%3A%2212475%22%2C%22refer_trigger_point%22%3A%22goods_card%22%2C%22refer_scene%22%3A%22search%22%7D",
+              "trendStoreTabAbtValue": "",
+              "appTraceInfo": "trend_shop_code_4534970445_Aloruh",
+              "showPosition": "aboveTitle",
+              "trendWordId": "-",
+              "trendShopCode": "4534970445",
+              "trendType": "fashionStore",
+              "fashionStoreName": "Aloruh",
+              "fashionStoreLogo": "https://img.ltwebstatic.com/images3_ccc/2024/07/25/0c/17218992763c90c1e58652d3c3ae23be19490aecc4.png",
+              "carrierType": "61",
+              "carrierTypeName": "选品主题",
+              "contentCarrierId": "-",
+              "carrierSubTypeName": "时尚店铺",
+              "sceneId": "-",
+              "carrierSubType": "63"
+            },
+            "v2ProductAttributeLabelList": [
+              {
+                "contentType": "number_of_comments",
+                "appTraceInfo": "4609`1`4.69_1000+`-`-",
+                "tagId": "4609",
+                "otherMark": "list_sorting_tag_4609_-_-"
+              }
+            ],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$21.09",
+              "usdAmount": null,
+              "priceShowStyle": "21",
+              "discountPercent": "11",
+              "discountPrice": "$2.70",
+              "description": null,
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_21.09|pri_23.79",
+                "isFlashSale": "0",
+                "otherMarks": null,
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "price_show_I7mjqj5ad1pix4"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_num_show": "1000+",
+          "comment_rank_average": "4.69",
+          "comment_num": 1001,
+          "percent_overall_fit": {
+            "true_size": "92%",
+            "large": "3%",
+            "small": "5%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|roi_24721|rdg_14|gfc99|gfc83|gfc61|ft_331|rs_4|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.020692_v3847-us|ctr_0.022629_v3847-us|abr_0.109866_v3847-us|cvr_0.033459_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.004202|gdup_18.370361|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.711353>all_words_expand_script_hot",
+            "fine_mark": "0_fs_0.9875_3349",
+            "rough_mark": "0_prs_7.5217E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/pi/2026/01/26/17/17694044749b9c4958123a25b91bd6485e8c0cdbc8_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 1,
+          "detail_url": "/Aloruh-Women-s-Elegant-Light-Yellow-Halter-Tie-Mini-Dress-p-387752092.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_387752092%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/06/24/76/178229482485829ad8d90e860b3859afb151201948_square.png",
+          "fromSkuCode": "I1mqrwdktup7ea",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "0",
+          "priority": "1",
+          "spu": "z2604111807866954",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 515174062, goodsSn| sz260411180786695456573, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "515174062",
+          "goods_sn": "sz260411180786695456573",
+          "productRelationID": "z2604111807866954",
+          "goods_img": "//img.ltwebstatic.com/v4/j/spmp/2026/08/12/fa/1786526082ca7413b788e6d80d97fc6cd3ab3103b9_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/spmp/2026/06/24/31/1782294508ba6ed7e947f7b7ea12b3542fd5f0cf7c_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2026/06/24/07/178229450438f99dc1072035143609e8245d134a61_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2026/08/10/f2/1786349532485ccd2af7064b2b1a4404b902f1ea6e_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2026/06/24/9d/1782294511d9cd06c684fc2bbc5c6ff6c8fc0207aa_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Pullover Dress, Yarn-Dyed Lightweight Polyester Non-Stretch Fabric (Material Is Relatively Stiff, Please Check Size Before Purchase), Striped Casual Vacation Daily Outing Date Multi-Scenario Suitable, Waist-Cinching Elegant Dress, Spring/Summer Striped Tie-Up, Autumn/Winter Layering",
+          "goods_url_name": "Pullover-Dress-Yarn-Dyed-Lightweight-Polyester-Non-Stretch-Fabric-Material-Is-Relatively-Stiff-Please-Check-Size-Before-Purchase-Striped-Casual-Vacation-Daily-Outing-Date-Multi-Scenario-Suitable-Waist-Cinching-Elegant-Dress-Spring-Summer-Striped-Tie-Up-Autumn-Winter-Layering",
+          "cat_id": "1727",
+          "cate_name": "Women Short Dresses",
+          "stock": "1",
+          "store_code": "8494550432",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "16.39",
+            "amountWithSymbol": "$16.39",
+            "usdAmount": "16.39",
+            "usdAmountWithSymbol": "$16.39",
+            "priceShowStyle": "16"
+          },
+          "salePrice": {
+            "amount": "13.25",
+            "amountWithSymbol": "$13.25",
+            "usdAmount": "13.25",
+            "usdAmountWithSymbol": "$13.25",
+            "priceShowStyle": "13"
+          },
+          "discountPrice": {
+            "amount": "3.14",
+            "amountWithSymbol": "$3.14",
+            "usdAmount": "3.14",
+            "usdAmountWithSymbol": "$3.14",
+            "priceShowStyle": "3"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "3.14",
+            "amountWithSymbol": "$3.14",
+            "usdAmount": "3.14",
+            "usdAmountWithSymbol": "$3.14",
+            "priceShowStyle": "3"
+          },
+          "retailDiscountPercent": "19",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "19",
+          "original_discount": "11",
+          "promotionInfo": [
+            {
+              "typeId": "31",
+              "dsaEndTime": "Valid before Oct 18, 23:59",
+              "startTimestamp": "1788192000",
+              "id": "96084503",
+              "mall_code": "1",
+              "mall_code_list": [
+                "1",
+                "2",
+                "3",
+                "4"
+              ],
+              "category_info": [],
+              "every_body_price_type": "1",
+              "endTime": "2026-10-18 23:59:59",
+              "isReturn": "1",
+              "endTimestamp": "1792339199",
+              "isFullShop": "0",
+              "isDeletePromotion": "0",
+              "isAddBuy": "",
+              "singleNum": "0",
+              "singleRemainNum": "",
+              "saleNumScene": "",
+              "buyLimitType": "",
+              "language_key": "",
+              "aggregateMemberResult": {},
+              "promotionActivityPriority": 0,
+              "promotion_logo_type": "0",
+              "rules": [
+                {
+                  "type": 5,
+                  "value": 0,
+                  "discount": {
+                    "type": 16,
+                    "value": 0,
+                    "enjoy_goods_num": 0,
+                    "value_amount": {
+                      "amount": "0.0",
+                      "amountWithSymbol": "$0.00",
+                      "usdAmount": "0.00",
+                      "usdAmountWithSymbol": "$0.00"
+                    },
+                    "gift_coupons": []
+                  },
+                  "value_amount": {
+                    "amount": "0",
+                    "amountWithSymbol": "$0.00",
+                    "usdAmount": "0.00",
+                    "usdAmountWithSymbol": "$0.00"
+                  },
+                  "max_discount": 0,
+                  "max_discount_amount": {
+                    "amount": "0.00",
+                    "amountWithSymbol": "$0.00",
+                    "usdAmount": "0.00",
+                    "usdAmountWithSymbol": "$0.00",
+                    "priceShowStyle": "0"
+                  },
+                  "delivery_id": null
+                }
+              ],
+              "subject": "1",
+              "channelType": "0",
+              "categoryInfo": [],
+              "pool_list": [],
+              "max_discount_convert_by_app_currency": {
+                "amount": "0.00",
+                "amountWithSymbol": "$0.00",
+                "usdAmount": "0.00",
+                "usdAmountWithSymbol": "$0.00",
+                "priceShowStyle": "0"
+              }
+            }
+          ],
+          "premiumFlagNew": {
+            "brandSeriesType": null
+          },
+          "productInfoLabels": {},
+          "quickship": "1",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/06/24/0e/1782294833a44ce563c9239b58577091db0843ad28_square.png",
+              "goods_id": "515174062",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/06/24/5b/17822948476e290f76af720b8bfe7a1656049b739e_square.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/04/11/59/1775902122dcf5d9c6a6fabcf5c74bce9468972b0f_square.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/06/24/76/178229482485829ad8d90e860b3859afb151201948_square.png",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": {
+                "materialValueKey": "custom",
+                "component": "general",
+                "discountPrice": null,
+                "bgImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/ec/1789875616303a5d063cdeb3dbe15a5baf0197597d.png",
+                "bgImageSize": {
+                  "width": "340",
+                  "height": "60"
+                },
+                "shapedImage": null,
+                "shapedImageSize": null,
+                "shapedBgImage": null,
+                "bigCardBgImage": null,
+                "bigCardBgImageSize": null,
+                "bigCardShapedImage": null,
+                "bigCardShapedImageSize": null,
+                "saveLabelLang": null,
+                "saveFontColor": null,
+                "labelLang": "Save $3.14",
+                "secondLabelLang": null,
+                "fontColor": "#FFFFFF",
+                "backgroundColor": null,
+                "appTraceInfo": "belt_600533535",
+                "endTime": null,
+                "icon": null,
+                "transparentImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/04/1789875619be5a0a70305c9adcdf118f8d58947bc1.png",
+                "transparentImageSize": {
+                  "width": "215",
+                  "height": "40"
+                },
+                "bigCardTransparentImage": null,
+                "bigCardTransparentImageSize": null,
+                "emphasizedText": null,
+                "currentTime": null
+              }
+            },
+            "titleLabelList": [
+              {
+                "labelType": "local_stock",
+                "labelLang": "Local",
+                "fontColor": "#FFFFFF",
+                "backgroundColor": "#169660",
+                "image": null,
+                "width": null,
+                "height": null,
+                "appTraceInfo": "listlocalTag_title_1"
+              }
+            ],
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/12/fa/1786526082ca7413b788e6d80d97fc6cd3ab3103b9_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2026/06/24/31/1782294508ba6ed7e947f7b7ea12b3542fd5f0cf7c_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2026/06/24/07/178229450438f99dc1072035143609e8245d134a61_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/10/f2/1786349532485ccd2af7064b2b1a4404b902f1ea6e_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2026/06/24/9d/1782294511d9cd06c684fc2bbc5c6ff6c8fc0207aa_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/spmp/2026/08/12/fa/1786526082ca7413b788e6d80d97fc6cd3ab3103b9_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/12/fa/1786526082ca7413b788e6d80d97fc6cd3ab3103b9_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/spmp/2026/08/12/fa/1786526082ca7413b788e6d80d97fc6cd3ab3103b9_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "1.5k+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_1.5k+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "v2ProductAttributeLabelList": [
+              {
+                "contentType": "ranking",
+                "appTraceInfo": "600117618`1`-`-`-",
+                "tagId": "600117618",
+                "otherMark": "list_sorting_tag_600117618_-_-"
+              }
+            ],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$13.25",
+              "usdAmount": null,
+              "priceShowStyle": "13",
+              "discountPercent": "19",
+              "discountPrice": "$3.14",
+              "description": null,
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_13.25|pri_16.39",
+                "isFlashSale": "0",
+                "otherMarks": null,
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "promotion_id_96084503|price_show_I1mqrwdktup7ea"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "rankInfo": {
+            "productDetailStyle": null,
+            "productDetailCartStyle": null,
+            "overviewCarStyle": null,
+            "oneColumnStyle": null,
+            "twoColumnStyle": {
+              "tagType": null,
+              "subscriptType": null,
+              "actionDataTagShow": null,
+              "tagName": "#9 Bestseller in Zipper Women Short Dresses",
+              "tagColor": "#a86104",
+              "bgColor": "#fff8eb",
+              "icon": "https://img.ltwebstatic.com/images3_ccc/2023/07/25/16902725561bbf1a4128275fa9bda56d25e07f08b6.png",
+              "tagId": null,
+              "appTraceInfo": "show_rank_type_15",
+              "rankTypeText": "#9 Bestseller",
+              "composeIdText": "in Zipper Women Short Dresses",
+              "routeUrl": "/sales/ranking_list?data=%7B%22content_carrier_id%22%3A%225233830%22%2C%22ranking_from%22%3A%22recommend%22%2C%22src_module%22%3A%22-%22%2C%22page_from%22%3A%22detail%22%2C%22carrier_sub_type%22%3A%2215%22%2C%22goods_id%22%3A%22515174062%22%2C%22board_generate_type%22%3A%22GOODS_ATTRIBUTE%60GOODS_CATEGORY_MALL%22%7D",
+              "carrierSubType": "15",
+              "carrierId": "5233830",
+              "materialValueKey": "best_sellers",
+              "title": "Bestseller in Zipper Women Short Dresses",
+              "score": 9,
+              "cateId": "1727",
+              "boardGenerateType": "GOODS_ATTRIBUTE`GOODS_CATEGORY_MALL",
+              "carrierTypeName": "榜单",
+              "carrierSubTypeName": "热销榜",
+              "carrierType": "14",
+              "srcIdentifier": null,
+              "infoFlow": null,
+              "strategy": "5077",
+              "description": null
+            },
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_num_show": "100+",
+          "comment_rank_average": "3.78",
+          "comment_num": 103,
+          "percent_overall_fit": {
+            "true_size": "77%",
+            "large": "3%",
+            "small": "20%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|roi_25252|tgt_2|troi_25.0|rdg_8|gfc99|gfc83|gfc61|ft_331-373|rs_4-48|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.013837_v3847-us|ctr_0.014748_v3847-us|abr_0.141185_v3847-us|cvr_0.043028_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.007082|gdup_11.541360|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.646112>keyword_script_hot>all_words_expand_script_hot>all_words_roi_v2>operation_newuser_v2>all_words_new_user_v5",
+            "fine_mark": "0_fs_0.9937_3349",
+            "rough_mark": "0_prs_5.6673E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_3|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/spmp/2026/08/12/fa/1786526082ca7413b788e6d80d97fc6cd3ab3103b9_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [
+              {
+                "typeId": 31,
+                "sortIndex": 20
+              }
+            ],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 2,
+          "detail_url": "/Pullover-Dress-Yarn-Dyed-Lightweight-Polyester-Non-Stretch-Fabric-Material-Is-Relatively-Stiff-Please-Check-Size-Before-Purchase-Striped-Casual-Vacation-Daily-Outing-Date-Multi-Scenario-Suitable-Waist-Cinching-Elegant-Dress-Spring-Summer-Striped-Tie-Up-Autumn-Winter-Layering-p-515174062.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_515174062%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/02/b0/1777685248d33375a45bf6098aa59e3b1a5b0d1aa6.jpg",
+          "fromSkuCode": "I7mo8c1bsisaad",
+          "brandCode": "1blsm",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "0",
+          "priority": "1",
+          "spu": "z2601121333816312",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 458057728, goodsSn| sz260112133381631268128, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "458057728",
+          "goods_sn": "sz260112133381631268128",
+          "productRelationID": "z2601121333816312",
+          "goods_img": "//img.ltwebstatic.com/v4/j/pi/2026/05/02/f8/17776852344d34295349aad8f43f4fbd32e5a672d8_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/02/29/1777685233ba0e65ec6e79aec758b0e3935b4921ef_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/02/45/17776852360ca06eed24f98fcf6bfdd05c8b860495_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/02/65/177768523835c3fa46efbfe001e6968718dffd62fb_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/02/14/17776852401348ee41df47ffd319bf7928914abe44_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/02/58/1777685241749ff29c87e8268f41fad72f856c21ed_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/02/9b/1777685245965cc9e2b08895edaa964ce970a26e3e_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Aloruh Women's Solid Color Sleeveless Mini Dress, Suitable For Beach Vacation,Dresses For Women Summer",
+          "goods_url_name": "Aloruh-Women-s-Solid-Color-Sleeveless-Mini-Dress-Suitable-For-Beach-Vacation-Dresses-For-Women-Summer",
+          "cat_id": "12475",
+          "cate_name": "Women Mini Dresses",
+          "stock": "1",
+          "store_code": "4534970445",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "18.29",
+            "amountWithSymbol": "$18.29",
+            "usdAmount": "18.29",
+            "usdAmountWithSymbol": "$18.29",
+            "priceShowStyle": "18"
+          },
+          "salePrice": {
+            "amount": "16.29",
+            "amountWithSymbol": "$16.29",
+            "usdAmount": "16.29",
+            "usdAmountWithSymbol": "$16.29",
+            "priceShowStyle": "16"
+          },
+          "discountPrice": {
+            "amount": "2.00",
+            "amountWithSymbol": "$2.00",
+            "usdAmount": "2.00",
+            "usdAmountWithSymbol": "$2.00",
+            "priceShowStyle": "2"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "2.00",
+            "amountWithSymbol": "$2.00",
+            "usdAmount": "2.00",
+            "usdAmountWithSymbol": "$2.00",
+            "priceShowStyle": "2"
+          },
+          "retailDiscountPercent": "11",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "11",
+          "original_discount": "11",
+          "premiumFlagNew": {
+            "brandId": "78904",
+            "productRecommendByGroup": 0,
+            "secondSeriesId": "269",
+            "brandSeriesType": "1",
+            "brand_badge_name": "Aloruh",
+            "brand_logo_url_left": "https://img.ltwebstatic.com/images3_ps1/2024/10/10/4c/1728541643ad984947f082b053362508398157e17a_fill_white.png",
+            "brand_code": "1blsm",
+            "series_badge_name": "Aloruh",
+            "seriesId": "8290",
+            "brandName": "Aloruh"
+          },
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/02/04/f3/17701894237b23d672817ebae2f2668f670f0afd46.jpg",
+              "goods_id": "458057728",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/02/b0/1777685248d33375a45bf6098aa59e3b1a5b0d1aa6.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/27/76/1785157469708585f861d39b9c74f1e9a020e5207e.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/29/76/1785290002f6bf0d3d9eb6adf0c7ae9563eb93e56d.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/29/95/178528997187a2b74647e67f183b8bb7a756ad51b0.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/08/11/178089682026b8c92631261a353eef2510e30b1eb5.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/29/96/1785289959e70c9e3888bdc50607923da27636b0f6.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/smartflow/2026/09/08/de/17888471109b01a007fdd9905d15a7c8529a3eac0b.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/23/1c/178478767991ef0cf7d27c64f7413f76617a1329b6.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/08/8a/17835066296d9a2bd90c7de81728b12560305cdcd7.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/dps/PS2026082719526/82bb27aea0bd7969bb8cf82537b6791f411b9710ece8641b04bfba000b2c780d_square.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/08/e9/1783506602c30f4e03fc683cf170b4d1267e3f1916.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/smartflow/2026/09/04/3b/17885191579a9c5565df8ac52160b2f5e293661920.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/smartflow/2026/08/17/5a/178697483707913182b6879ed6f20ba95a5c77a2ee.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/08/04/3d/17858383364de5f490dfde87a4f23ea4851ebbf9b8.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/14/d8/17787298533dd9c6fcba6ad1227e99a1d850b9f63e.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/21/2c/17793410274785cc9f0631b51ba1260a88f3a7a5fa.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/08/ad/17835066032d00b9672e60e5a8904aa8e2d37fa3a6.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/26/ef/1782446001090920dd29506e8526de1d343f3ebaa7.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/smartflow/2026/08/17/7b/1786974853a5a96dc2426c5a83e396214d411c10be.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/18/e3/1779100843787a601db381f7864eee3c79441dc5c1.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/smartflow/2026/09/08/2f/178884710992a6d471ddc987428c1a800807ba6e01.jpg",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": {
+                "materialValueKey": "custom",
+                "component": "general",
+                "discountPrice": null,
+                "bgImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/0c/17898753100c0f46471ee40bda8880638194045446.png",
+                "bgImageSize": {
+                  "width": "340",
+                  "height": "40"
+                },
+                "shapedImage": null,
+                "shapedImageSize": null,
+                "shapedBgImage": null,
+                "bigCardBgImage": null,
+                "bigCardBgImageSize": null,
+                "bigCardShapedImage": null,
+                "bigCardShapedImageSize": null,
+                "saveLabelLang": null,
+                "saveFontColor": null,
+                "labelLang": "Save $2.00",
+                "secondLabelLang": null,
+                "fontColor": "#FFFFFF",
+                "backgroundColor": null,
+                "appTraceInfo": "belt_600533534",
+                "endTime": null,
+                "icon": null,
+                "transparentImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/52/1789875313d8f669cdc3356868daacbe3958a99d1b.png",
+                "transparentImageSize": {
+                  "width": "215",
+                  "height": "40"
+                },
+                "bigCardTransparentImage": null,
+                "bigCardTransparentImageSize": null,
+                "emphasizedText": null,
+                "currentTime": null
+              }
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/02/f8/17776852344d34295349aad8f43f4fbd32e5a672d8_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/02/29/1777685233ba0e65ec6e79aec758b0e3935b4921ef_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/02/45/17776852360ca06eed24f98fcf6bfdd05c8b860495_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/02/65/177768523835c3fa46efbfe001e6968718dffd62fb_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/02/14/17776852401348ee41df47ffd319bf7928914abe44_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/02/58/1777685241749ff29c87e8268f41fad72f856c21ed_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/02/9b/1777685245965cc9e2b08895edaa964ce970a26e3e_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/02/f8/17776852344d34295349aad8f43f4fbd32e5a672d8_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/02/f8/17776852344d34295349aad8f43f4fbd32e5a672d8_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/02/f8/17776852344d34295349aad8f43f4fbd32e5a672d8_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "upperLeftPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "subscript",
+                "displayType": "brand_image",
+                "image": "https://img.ltwebstatic.com/images3_ps1/2024/10/10/4c/1728541643ad984947f082b053362508398157e17a_fill_white.png",
+                "appTraceInfo": "lu_corner_mark_brand_image_78904"
+              }
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "5.5k+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_5.5k+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "trendLabel": {
+              "trendIpImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpBigImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpLang": "Top Trends",
+              "trendLabel": {
+                "borderColor": null,
+                "borderWidth": null,
+                "labelName": "Aloruh",
+                "bgColor": "#F4EFFF",
+                "fontColor": "#9462FF",
+                "icon": "https://img.ltwebstatic.com/images3_ccc/2024/07/25/0c/17218992763c90c1e58652d3c3ae23be19490aecc4.png",
+                "iconType": "new"
+              },
+              "routingUrl": "/store/home?data=%7B%22store_code%22%3A%224534970445%22%2C%22top_goods_id%22%3A%22458057728%22%2C%22main_goods_id%22%3A%22458057728%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendshop_entry%22%2C%22tab%22%3A%22items%22%2C%22scroll_index%22%3A%220%22%2C%22main_cate_id%22%3A%2212475%22%2C%22refer_trigger_point%22%3A%22goods_card%22%2C%22refer_scene%22%3A%22search%22%7D",
+              "contentRoutingUrl": "/store/home?data=%7B%22store_code%22%3A%224534970445%22%2C%22top_goods_id%22%3A%22458057728%22%2C%22main_goods_id%22%3A%22458057728%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendshop_entry%22%2C%22tab%22%3A%22items%22%2C%22scroll_index%22%3A%220%22%2C%22main_cate_id%22%3A%2212475%22%2C%22refer_trigger_point%22%3A%22goods_card%22%2C%22refer_scene%22%3A%22search%22%7D",
+              "trendStoreTabAbtValue": "",
+              "appTraceInfo": "trend_shop_code_4534970445_Aloruh",
+              "showPosition": "aboveTitle",
+              "trendWordId": "-",
+              "trendShopCode": "4534970445",
+              "trendType": "fashionStore",
+              "fashionStoreName": "Aloruh",
+              "fashionStoreLogo": "https://img.ltwebstatic.com/images3_ccc/2024/07/25/0c/17218992763c90c1e58652d3c3ae23be19490aecc4.png",
+              "carrierType": "61",
+              "carrierTypeName": "选品主题",
+              "contentCarrierId": "-",
+              "carrierSubTypeName": "时尚店铺",
+              "sceneId": "-",
+              "carrierSubType": "63"
+            },
+            "v2ProductAttributeLabelList": [
+              {
+                "contentType": "ranking",
+                "appTraceInfo": "600117618`1`-`-`-",
+                "tagId": "600117618",
+                "otherMark": "list_sorting_tag_600117618_-_-"
+              },
+              {
+                "contentType": "number_of_comments",
+                "appTraceInfo": "4609`2`4.62_500+`-`-",
+                "tagId": "4609",
+                "otherMark": "list_sorting_tag_4609_-_-"
+              }
+            ],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$16.29",
+              "usdAmount": null,
+              "priceShowStyle": "16",
+              "discountPercent": "11",
+              "discountPrice": "$2.00",
+              "description": null,
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_16.29|pri_18.29",
+                "isFlashSale": "0",
+                "otherMarks": null,
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "price_show_I7mo8c1bsisaad"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "rankInfo": {
+            "productDetailStyle": null,
+            "productDetailCartStyle": null,
+            "overviewCarStyle": null,
+            "oneColumnStyle": null,
+            "twoColumnStyle": {
+              "tagType": null,
+              "subscriptType": null,
+              "actionDataTagShow": null,
+              "tagName": "#1 Bestseller in Wedding Women Mini Dresses",
+              "tagColor": "#a86104",
+              "bgColor": "#fff8eb",
+              "icon": "https://img.ltwebstatic.com/images3_ccc/2023/07/25/16902725561bbf1a4128275fa9bda56d25e07f08b6.png",
+              "tagId": null,
+              "appTraceInfo": "show_rank_type_15",
+              "rankTypeText": "#1 Bestseller",
+              "composeIdText": "in Wedding Women Mini Dresses",
+              "routeUrl": "/sales/ranking_list?data=%7B%22content_carrier_id%22%3A%225232406%22%2C%22ranking_from%22%3A%22recommend%22%2C%22src_module%22%3A%22-%22%2C%22page_from%22%3A%22detail%22%2C%22carrier_sub_type%22%3A%2215%22%2C%22goods_id%22%3A%22458057728%22%2C%22board_generate_type%22%3A%22GOODS_ATTRIBUTE%60GOODS_CATEGORY_MALL%22%7D",
+              "carrierSubType": "15",
+              "carrierId": "5232406",
+              "materialValueKey": "best_sellers",
+              "title": "Bestseller in Wedding Women Mini Dresses",
+              "score": 1,
+              "cateId": "12475",
+              "boardGenerateType": "GOODS_ATTRIBUTE`GOODS_CATEGORY_MALL",
+              "carrierTypeName": "榜单",
+              "carrierSubTypeName": "热销榜",
+              "carrierType": "14",
+              "srcIdentifier": null,
+              "infoFlow": null,
+              "strategy": "5077",
+              "description": null
+            },
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_num_show": "500+",
+          "comment_rank_average": "4.62",
+          "comment_num": 982,
+          "percent_overall_fit": {
+            "true_size": "95%",
+            "large": "1%",
+            "small": "4%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|gfc99|gfc83|gfc61|ft_331|rs_4|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.010567_v3847-us|ctr_0.011072_v3847-us|abr_0.169569_v3847-us|cvr_0.033986_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.007047|gdup_14.189341|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.629774>keyword_script_hot>all_words_expand_script_hot>operation_newuser_v2>all_words_new_user_v5>search_nearline@mmd_65727",
+            "fine_mark": "0_fs_0.9975_3349",
+            "rough_mark": "0_prs_5.4123E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/pi/2026/05/02/f8/17776852344d34295349aad8f43f4fbd32e5a672d8_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 3,
+          "detail_url": "/Aloruh-Women-s-Solid-Color-Sleeveless-Mini-Dress-Suitable-For-Beach-Vacation-Dresses-For-Women-Summer-p-458057728.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_458057728%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/bbeebc8a78dee44451f68f7cd1a955da6928462e3766b9d641f2dd380eeef2d0_square.jpg",
+          "fromSkuCode": "I6mqyknj2l6icy",
+          "brandCode": "1ypce",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "1",
+          "priority": "1",
+          "spu": "z24092339331",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 520407079, goodsSn| sz2409233933185299, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "520407079",
+          "goods_sn": "sz2409233933185299",
+          "productRelationID": "z24092339331",
+          "goods_img": "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/8baaa216af6800e1b69a6eb48e6498a9883cd4bd2dc74022106be548dcdd4319_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/5c8d4674a50ea2d620f0d69e9ebfe15e5842ffdf25a433ec16d352a4245eeb60_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/6a510532abf05a5a6ed5b3636e405e54bbc1130895b8e38b0047b0799641209f_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/6aa97e75b719d9d4574220a4b4aa0f4e5a7972a1805a7cb9e0a6acca7b36c80c_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/7d6dc49f99b464cc70d5bf16a131672d6a340ccbc92f5bb7c5717690d25ee988_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/312652e7dcd55cabf1811c3cec5fd3d321b69709a6d732138c342d91fa5a7529_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Vivid Eden Women's Floral Print Casual Boho Short Dress For Daily Wear Beach White And Blue Floral Summer",
+          "goods_url_name": "Vivid-Eden-Women-s-Floral-Print-Casual-Boho-Short-Dress-For-Daily-Wear-Beach-White-And-Blue-Floral-Summer",
+          "cat_id": "1727",
+          "cate_name": "Women Short Dresses",
+          "stock": "1",
+          "store_code": "9720991559",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "11.59",
+            "amountWithSymbol": "$11.59",
+            "usdAmount": "11.59",
+            "usdAmountWithSymbol": "$11.59",
+            "priceShowStyle": "11"
+          },
+          "salePrice": {
+            "amount": "10.29",
+            "amountWithSymbol": "$10.29",
+            "usdAmount": "10.29",
+            "usdAmountWithSymbol": "$10.29",
+            "priceShowStyle": "10"
+          },
+          "discountPrice": {
+            "amount": "1.30",
+            "amountWithSymbol": "$1.30",
+            "usdAmount": "1.30",
+            "usdAmountWithSymbol": "$1.30",
+            "priceShowStyle": "1"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "1.30",
+            "amountWithSymbol": "$1.30",
+            "usdAmount": "1.30",
+            "usdAmountWithSymbol": "$1.30",
+            "priceShowStyle": "1"
+          },
+          "retailDiscountPercent": "11",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "11",
+          "original_discount": "11",
+          "premiumFlagNew": {
+            "brandId": "77022",
+            "productRecommendByGroup": 0,
+            "secondSeriesId": "439",
+            "brandSeriesType": "1",
+            "brand_badge_name": "Vivid Eden",
+            "brand_logo_url_left": "https://img.ltwebstatic.com/images3_ps1/2024/09/02/a1/1725286249ad354583c13032cb9314bb55c051d98e.png",
+            "brand_code": "1ypce",
+            "series_badge_name": "Vivid Eden",
+            "seriesId": "9045",
+            "brandName": "Vivid Eden"
+          },
+          "sellingPoint": [
+            {
+              "isEvolushein": null,
+              "tag_id": "228",
+              "tag_name_en": "Trend Selling Point",
+              "tag_name": "趋势型卖点",
+              "tag_val_id": "60007287",
+              "tag_val_name": "趋势 - 波西米亚时尚",
+              "tag_val_desc": "Free-spirited, 70s-inspired, and romantic are all words that can describe Bohemian Chic. Today, the Boho-Chic style still firmly remains in vogue, beloved by women worldwide for its comfort and encouragement of authentic self-expression. ",
+              "tag_val_name_en": "Trending - Bohemian Fashion",
+              "tag_val_name_lang": "Trending - Bohemian Fashion",
+              "change": "1",
+              "tag_text_color": "#666666",
+              "tag_bg_color": "#FFF6F3",
+              "tag_sort": null
+            }
+          ],
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/bbeebc8a78dee44451f68f7cd1a955da6928462e3766b9d641f2dd380eeef2d0_square.jpg",
+              "goods_id": "520407079",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/15/ce/17788231990337eccc6db1feee80a449d21c6d0dc7.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/21/96/17846004616dfb606813a5abfb2bed3c898f1cae30.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/07/ee/178342560862dd514ba17c4319b6bd4f3aa1cd6a9f.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/15/67/1781527347fc2ab1a780329ece47b2c60642033c95.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/04/13/ee/1776066968df8e270d7e1b3025b564140a5b256d5b.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/12/a3/1781265680332eff359f2a78348e0628b229b7ffe2.jpg",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": {
+                "materialValueKey": "custom",
+                "component": "general",
+                "discountPrice": null,
+                "bgImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/0c/17898753100c0f46471ee40bda8880638194045446.png",
+                "bgImageSize": {
+                  "width": "340",
+                  "height": "40"
+                },
+                "shapedImage": null,
+                "shapedImageSize": null,
+                "shapedBgImage": null,
+                "bigCardBgImage": null,
+                "bigCardBgImageSize": null,
+                "bigCardShapedImage": null,
+                "bigCardShapedImageSize": null,
+                "saveLabelLang": null,
+                "saveFontColor": null,
+                "labelLang": "Save $1.30",
+                "secondLabelLang": null,
+                "fontColor": "#FFFFFF",
+                "backgroundColor": null,
+                "appTraceInfo": "belt_600533534",
+                "endTime": null,
+                "icon": null,
+                "transparentImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/52/1789875313d8f669cdc3356868daacbe3958a99d1b.png",
+                "transparentImageSize": {
+                  "width": "215",
+                  "height": "40"
+                },
+                "bigCardTransparentImage": null,
+                "bigCardTransparentImageSize": null,
+                "emphasizedText": null,
+                "currentTime": null
+              }
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/8baaa216af6800e1b69a6eb48e6498a9883cd4bd2dc74022106be548dcdd4319_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/5c8d4674a50ea2d620f0d69e9ebfe15e5842ffdf25a433ec16d352a4245eeb60_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/6a510532abf05a5a6ed5b3636e405e54bbc1130895b8e38b0047b0799641209f_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/6aa97e75b719d9d4574220a4b4aa0f4e5a7972a1805a7cb9e0a6acca7b36c80c_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/7d6dc49f99b464cc70d5bf16a131672d6a340ccbc92f5bb7c5717690d25ee988_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/312652e7dcd55cabf1811c3cec5fd3d321b69709a6d732138c342d91fa5a7529_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/8baaa216af6800e1b69a6eb48e6498a9883cd4bd2dc74022106be548dcdd4319_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/8baaa216af6800e1b69a6eb48e6498a9883cd4bd2dc74022106be548dcdd4319_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/8baaa216af6800e1b69a6eb48e6498a9883cd4bd2dc74022106be548dcdd4319_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "upperLeftPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "subscript",
+                "displayType": "brand_image",
+                "image": "https://img.ltwebstatic.com/images3_ps1/2024/09/02/a1/1725286249ad354583c13032cb9314bb55c051d98e.png",
+                "appTraceInfo": "lu_corner_mark_brand_image_77022"
+              }
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "900+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_900+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "trendLabel": {
+              "trendIpImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpBigImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpLang": "Top Trends",
+              "trendLabel": {
+                "borderColor": null,
+                "borderWidth": null,
+                "labelName": "Vivid Eden",
+                "bgColor": "#F4EFFF",
+                "fontColor": "#9462FF",
+                "icon": "https://img.ltwebstatic.com/images3_ccc/2024/07/25/0c/17218992763c90c1e58652d3c3ae23be19490aecc4.png",
+                "iconType": "new"
+              },
+              "routingUrl": "/store/home?data=%7B%22store_code%22%3A%229720991559%22%2C%22top_goods_id%22%3A%22520407079%22%2C%22main_goods_id%22%3A%22520407079%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendshop_entry%22%2C%22tab%22%3A%22items%22%2C%22scroll_index%22%3A%220%22%2C%22main_cate_id%22%3A%221727%22%2C%22refer_trigger_point%22%3A%22goods_card%22%2C%22refer_scene%22%3A%22search%22%7D",
+              "contentRoutingUrl": "/store/home?data=%7B%22store_code%22%3A%229720991559%22%2C%22top_goods_id%22%3A%22520407079%22%2C%22main_goods_id%22%3A%22520407079%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendshop_entry%22%2C%22tab%22%3A%22items%22%2C%22scroll_index%22%3A%220%22%2C%22main_cate_id%22%3A%221727%22%2C%22refer_trigger_point%22%3A%22goods_card%22%2C%22refer_scene%22%3A%22search%22%7D",
+              "trendStoreTabAbtValue": "",
+              "appTraceInfo": "trend_shop_code_9720991559_Vivid Eden",
+              "showPosition": "aboveTitle",
+              "trendWordId": "-",
+              "trendShopCode": "9720991559",
+              "trendType": "fashionStore",
+              "fashionStoreName": "Vivid Eden",
+              "fashionStoreLogo": "https://img.ltwebstatic.com/images3_ccc/2024/07/25/0c/17218992763c90c1e58652d3c3ae23be19490aecc4.png",
+              "carrierType": "61",
+              "carrierTypeName": "选品主题",
+              "contentCarrierId": "-",
+              "carrierSubTypeName": "时尚店铺",
+              "sceneId": "-",
+              "carrierSubType": "63"
+            },
+            "v2ProductAttributeLabelList": [],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$10.29",
+              "usdAmount": null,
+              "priceShowStyle": "10",
+              "discountPercent": "11",
+              "discountPrice": "$1.30",
+              "description": null,
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_10.29|pri_11.59",
+                "isFlashSale": "0",
+                "otherMarks": null,
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "price_show_I6mqyknj2l6icy"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "rankInfo": {
+            "productDetailStyle": null,
+            "productDetailCartStyle": null,
+            "overviewCarStyle": null,
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_num_show": "1000+",
+          "comment_rank_average": "4.86",
+          "comment_num": 1001,
+          "percent_overall_fit": {
+            "true_size": "92%",
+            "large": "5%",
+            "small": "3%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|roi_22152|rdg_14|gfc99|gfc83|gfc61|ft_331-373|rs_4-48|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.012381_v3847-us|ctr_0.013199_v3847-us|abr_0.147737_v3847-us|cvr_0.03401_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.006398|gdup_8.963063|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.593909>keyword_script_hot>all_words_expand_script_hot>operation_newuser_v2>all_words_new_user_v5",
+            "fine_mark": "0_fs_0.9837_3349",
+            "rough_mark": "0_prs_4.9554E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/dps/PS2026090323034/8baaa216af6800e1b69a6eb48e6498a9883cd4bd2dc74022106be548dcdd4319_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 4,
+          "detail_url": "/Vivid-Eden-Women-s-Floral-Print-Casual-Boho-Short-Dress-For-Daily-Wear-Beach-White-And-Blue-Floral-Summer-p-520407079.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_520407079%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/p/spmp/2025/09/24/e0/1758704168bf8785e60cc9c75cc1e32b5858a6e0fc.png",
+          "fromSkuCode": "I13jjrd9wiu0",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "0",
+          "priority": "1",
+          "spu": "z250801108888",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 205605554, goodsSn| sz25080110888813311, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "205605554",
+          "goods_sn": "sz25080110888813311",
+          "productRelationID": "z250801108888",
+          "goods_img": "//img.ltwebstatic.com/v4/j/spmp/2026/08/20/df/17872376080c3f573bd38828bb8ee337efe68890a7_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/spmp/2025/12/30/1f/1767084930c9ca8e890178c867910caf9f5ae4a2b9_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2025/12/30/b6/176708501940098dc2aa8d45306c5c486f8d59f31e_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2025/09/24/b2/17587041090460d62fa39666118b42e38617b36962_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2025/09/24/71/1758704129c31cbb43883c398c8ffa1dd4347cac97_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2025/09/24/40/17587041029c505da5da3e3453fb2963392d53759f_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2025/12/30/06/1767085039a9fdd87af5a1cccffb0f64e4092fdac4_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2025/09/24/99/1758704139770f0b56ed1e591b00f4130414bf6e40_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "VIBECORE Women's Sexy Backless Spaghetti Strap Ruched Party Club Holiday Night Out Black Dress Elegant Summer, Date Night",
+          "goods_url_name": "VIBECORE-Women-s-Sexy-Backless-Spaghetti-Strap-Ruched-Party-Club-Holiday-Night-Out-Black-Dress-Elegant-Summer-Date-Night",
+          "cat_id": "1727",
+          "cate_name": "Women Short Dresses",
+          "stock": "1",
+          "store_code": "1987503418",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "14.59",
+            "amountWithSymbol": "$14.59",
+            "usdAmount": "14.59",
+            "usdAmountWithSymbol": "$14.59",
+            "priceShowStyle": "14"
+          },
+          "salePrice": {
+            "amount": "12.99",
+            "amountWithSymbol": "$12.99",
+            "usdAmount": "12.99",
+            "usdAmountWithSymbol": "$12.99",
+            "priceShowStyle": "12"
+          },
+          "discountPrice": {
+            "amount": "1.60",
+            "amountWithSymbol": "$1.60",
+            "usdAmount": "1.60",
+            "usdAmountWithSymbol": "$1.60",
+            "priceShowStyle": "1"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "1.60",
+            "amountWithSymbol": "$1.60",
+            "usdAmount": "1.60",
+            "usdAmountWithSymbol": "$1.60",
+            "priceShowStyle": "1"
+          },
+          "retailDiscountPercent": "11",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "11",
+          "original_discount": "11",
+          "premiumFlagNew": {
+            "brandSeriesType": null
+          },
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2025/09/24/f5/175870437431de179d528e29a6059bb7196daee3e5.png",
+              "goods_id": "205605554",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2025/09/24/e0/1758704168bf8785e60cc9c75cc1e32b5858a6e0fc.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/05/28/c6/177996389946a6219ed3c8f109b2b5ac3f037381cd_square.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2025/09/24/33/17587050899aedd285da3b397101d85929d93488f2.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2025/09/24/9e/1758704282f0e063972ba94f243ab87ccb0066a86c.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2025/11/25/f8/1764066604920b66aab5bdc101e131a2cecb974dd1.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2025/09/24/be/1758705058e836de1c4a817274b361af9932317962.png",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": {
+                "materialValueKey": "custom",
+                "component": "general",
+                "discountPrice": null,
+                "bgImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/0c/17898753100c0f46471ee40bda8880638194045446.png",
+                "bgImageSize": {
+                  "width": "340",
+                  "height": "40"
+                },
+                "shapedImage": null,
+                "shapedImageSize": null,
+                "shapedBgImage": null,
+                "bigCardBgImage": null,
+                "bigCardBgImageSize": null,
+                "bigCardShapedImage": null,
+                "bigCardShapedImageSize": null,
+                "saveLabelLang": null,
+                "saveFontColor": null,
+                "labelLang": "Save $1.60",
+                "secondLabelLang": null,
+                "fontColor": "#FFFFFF",
+                "backgroundColor": null,
+                "appTraceInfo": "belt_600533534",
+                "endTime": null,
+                "icon": null,
+                "transparentImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/52/1789875313d8f669cdc3356868daacbe3958a99d1b.png",
+                "transparentImageSize": {
+                  "width": "215",
+                  "height": "40"
+                },
+                "bigCardTransparentImage": null,
+                "bigCardTransparentImageSize": null,
+                "emphasizedText": null,
+                "currentTime": null
+              }
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/20/df/17872376080c3f573bd38828bb8ee337efe68890a7_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2025/12/30/1f/1767084930c9ca8e890178c867910caf9f5ae4a2b9_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2025/12/30/b6/176708501940098dc2aa8d45306c5c486f8d59f31e_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2025/09/24/b2/17587041090460d62fa39666118b42e38617b36962_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2025/09/24/71/1758704129c31cbb43883c398c8ffa1dd4347cac97_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2025/09/24/40/17587041029c505da5da3e3453fb2963392d53759f_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2025/12/30/06/1767085039a9fdd87af5a1cccffb0f64e4092fdac4_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2025/09/24/99/1758704139770f0b56ed1e591b00f4130414bf6e40_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/spmp/2026/08/20/df/17872376080c3f573bd38828bb8ee337efe68890a7_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/20/df/17872376080c3f573bd38828bb8ee337efe68890a7_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/spmp/2026/08/20/df/17872376080c3f573bd38828bb8ee337efe68890a7_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "5.6k+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_5.6k+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "trendLabel": {
+              "trendIpImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpBigImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpLang": "Top Trends",
+              "trendLabel": {
+                "borderColor": null,
+                "borderWidth": null,
+                "labelName": "#RomanticDresses",
+                "bgColor": "#F4EFFF",
+                "fontColor": "#9462FF",
+                "icon": null,
+                "iconType": null
+              },
+              "routingUrl": "/sales/trend_landing_page?data=%7B%22top_goods_id%22%3A%22205605554%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendtag_entry%22%2C%22product_select_id%22%3A%2250030647%22%2C%22goodsId%22%3A%22205605554%22%2C%22cate_ids%22%3A%221727%22%2C%22productSelectId_scUrlId%22%3A%2250030647_15850030647%22%2C%22trend_word_id%22%3A%227726%22%7D",
+              "contentRoutingUrl": "/sales/trend_landing_page?data=%7B%22top_goods_id%22%3A%22205605554%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendtag_entry%22%2C%22product_select_id%22%3A%2250030647%22%2C%22goodsId%22%3A%22205605554%22%2C%22cate_ids%22%3A%221727%22%2C%22productSelectId_scUrlId%22%3A%2250030647_15850030647%22%2C%22trend_word_id%22%3A%227726%22%7D",
+              "appTraceInfo": "trend_tag_7726|product_select_id_50030647",
+              "showPosition": "aboveTitle",
+              "displayDesc": "Romantic dresses worth dressing up for.",
+              "trendWordId": "7726",
+              "trendShopCode": "-",
+              "productSelectId": "50030647",
+              "productSelectUrlId": "15850030647",
+              "trendType": "trend",
+              "carrierType": "61",
+              "highEffect": "0",
+              "carrierTypeName": "选品主题",
+              "contentCarrierId": "50030647",
+              "carrierSubTypeName": "潮流趋势",
+              "sceneId": "-",
+              "carrierSubType": "62"
+            },
+            "v2ProductAttributeLabelList": [
+              {
+                "contentType": "ranking",
+                "appTraceInfo": "600117618`1`-`-`-",
+                "tagId": "600117618",
+                "otherMark": "list_sorting_tag_600117618_-_-"
+              },
+              {
+                "contentType": "number_of_comments",
+                "appTraceInfo": "4609`2`4.74_500+`-`-",
+                "tagId": "4609",
+                "otherMark": "list_sorting_tag_4609_-_-"
+              }
+            ],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$12.99",
+              "usdAmount": null,
+              "priceShowStyle": "12",
+              "discountPercent": "11",
+              "discountPrice": "$1.60",
+              "description": null,
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_12.99|pri_14.59",
+                "isFlashSale": "0",
+                "otherMarks": null,
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "price_show_I13jjrd9wiu0"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "rankInfo": {
+            "productDetailStyle": null,
+            "productDetailCartStyle": null,
+            "overviewCarStyle": null,
+            "oneColumnStyle": null,
+            "twoColumnStyle": {
+              "tagType": null,
+              "subscriptType": null,
+              "actionDataTagShow": null,
+              "tagName": "#2 Bestseller in Backless Women Short Dresses",
+              "tagColor": "#a86104",
+              "bgColor": "#fff8eb",
+              "icon": "https://img.ltwebstatic.com/images3_ccc/2023/07/25/16902725561bbf1a4128275fa9bda56d25e07f08b6.png",
+              "tagId": null,
+              "appTraceInfo": "show_rank_type_15",
+              "rankTypeText": "#2 Bestseller",
+              "composeIdText": "in Backless Women Short Dresses",
+              "routeUrl": "/sales/ranking_list?data=%7B%22content_carrier_id%22%3A%224578700%22%2C%22ranking_from%22%3A%22recommend%22%2C%22src_module%22%3A%22-%22%2C%22page_from%22%3A%22detail%22%2C%22carrier_sub_type%22%3A%2215%22%2C%22goods_id%22%3A%22205605554%22%2C%22board_generate_type%22%3A%22GOODS_ATTRIBUTE%60GOODS_CATEGORY_MALL%22%7D",
+              "carrierSubType": "15",
+              "carrierId": "4578700",
+              "materialValueKey": "best_sellers",
+              "title": "Bestseller in Backless Women Short Dresses",
+              "score": 2,
+              "cateId": "1727",
+              "boardGenerateType": "GOODS_ATTRIBUTE`GOODS_CATEGORY_MALL",
+              "carrierTypeName": "榜单",
+              "carrierSubTypeName": "热销榜",
+              "carrierType": "14",
+              "srcIdentifier": null,
+              "infoFlow": null,
+              "strategy": "5077",
+              "description": null
+            },
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_num_show": "500+",
+          "comment_rank_average": "4.74",
+          "comment_num": 971,
+          "percent_overall_fit": {
+            "true_size": "91%",
+            "large": "7%",
+            "small": "2%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|roi_25268|rdg_14|gfc99|gfc83|gfc61|ft_331|rs_4|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.010076_v3847-us|ctr_0.010639_v3847-us|abr_0.16709_v3847-us|cvr_0.030078_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.006399|gdup_11.314887|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.547815>all_words_expand_script_hot>knna_reorder_3_aml@knn_v1204us&-0.078918",
+            "fine_mark": "0_fs_0.9925_3349",
+            "rough_mark": "0_prs_7.4172E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/spmp/2026/08/20/df/17872376080c3f573bd38828bb8ee337efe68890a7_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 5,
+          "detail_url": "/VIBECORE-Women-s-Sexy-Backless-Spaghetti-Strap-Ruched-Party-Club-Holiday-Night-Out-Black-Dress-Elegant-Summer-Date-Night-p-205605554.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_205605554%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/16/f8/176856433483ca05bff46114738b93724382ce0cae.jpg",
+          "fromSkuCode": "I8mpqvy73i1j23",
+          "parentIds": [
+            "2031",
+            "6760"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "1",
+          "priority": "1",
+          "spu": "k2603302244372815",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 398716771, goodsSn| sk251219130467862296736, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "398716771",
+          "goods_sn": "sk251219130467862296736",
+          "productRelationID": "k2603302244372815",
+          "goods_img": "//img.ltwebstatic.com/v4/j/pi/2026/02/05/fa/17702803193096f4e530ddd73fabd2f992c51746a8_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/16/a3/1768564326959b1741db1fb3bb998a01cc59cdbb51_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/06/04/3f/17805605170d527e1a5a61647c48526bd4c5db696e_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/16/17/176856432864dd78fe200d7b1b5a626580b276d599_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/16/1c/176856433066e7201fa724f3c5e9f380e6741aa3be_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/16/58/1768564331d72b85f45773f96ef0033131737dca5b_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/01/16/7e/1768564325e104e9abf6dfdb3394ac62212333b882_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/02/05/9b/1770280320ca4010178a5da474731d0780a031dd6f_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Kids Teen Girls White Polka Dot Print Halter Dress,Cute Summer Backless Mini Dress,Double Layer Ruffled Hem Outfits For Holiday & Family Vacation",
+          "goods_url_name": "Kids-Teen-Girls-White-Polka-Dot-Print-Halter-Dress-Cute-Summer-Backless-Mini-Dress-Double-Layer-Ruffled-Hem-Outfits-For-Holiday-Family-Vacation",
+          "cat_id": "6766",
+          "cate_name": "Teen Girls Dresses",
+          "stock": "1",
+          "store_code": "8345064393",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "12.69",
+            "amountWithSymbol": "$12.69",
+            "usdAmount": "12.69",
+            "usdAmountWithSymbol": "$12.69",
+            "priceShowStyle": "12"
+          },
+          "salePrice": {
+            "amount": "9.68",
+            "amountWithSymbol": "$9.68",
+            "usdAmount": "9.68",
+            "usdAmountWithSymbol": "$9.68",
+            "priceShowStyle": "9"
+          },
+          "discountPrice": {
+            "amount": "3.01",
+            "amountWithSymbol": "$3.01",
+            "usdAmount": "3.01",
+            "usdAmountWithSymbol": "$3.01",
+            "priceShowStyle": "3"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "3.01",
+            "amountWithSymbol": "$3.01",
+            "usdAmount": "3.01",
+            "usdAmountWithSymbol": "$3.01",
+            "priceShowStyle": "3"
+          },
+          "retailDiscountPercent": "24",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "24",
+          "original_discount": "10",
+          "promotionInfo": [
+            {
+              "typeId": "32",
+              "dsaEndTime": "Valid before Oct 04, 23:59",
+              "startTimestamp": "1789970400",
+              "id": "101564143",
+              "mall_code": "1",
+              "mall_code_list": [
+                "1"
+              ],
+              "category_info": [],
+              "every_body_price_type": "1",
+              "endTime": "2026-10-04 23:59:59",
+              "isReturn": "1",
+              "endTimestamp": "1791129599",
+              "isFullShop": "0",
+              "isDeletePromotion": "0",
+              "isAddBuy": "",
+              "singleNum": "0",
+              "singleRemainNum": "",
+              "saleNumScene": "",
+              "buyLimitType": "",
+              "language_key": "",
+              "aggregatePromotionBusiness": {
+                "estimatedMultiLang": "Estimated",
+                "withCouponMultiLang": "after coupon",
+                "estimatedPriceMultiLang": "Estimated {0}"
+              },
+              "aggregateMemberResult": {},
+              "promotionActivityPriority": 0,
+              "promotion_logo_type": "23",
+              "rules": [
+                {
+                  "type": 5,
+                  "value": 0,
+                  "discount": {
+                    "type": 16,
+                    "value": 0,
+                    "enjoy_goods_num": 0,
+                    "value_amount": {
+                      "amount": "0.0",
+                      "amountWithSymbol": "$0.00",
+                      "usdAmount": "0.00",
+                      "usdAmountWithSymbol": "$0.00"
+                    },
+                    "gift_coupons": []
+                  },
+                  "value_amount": {
+                    "amount": "0",
+                    "amountWithSymbol": "$0.00",
+                    "usdAmount": "0.00",
+                    "usdAmountWithSymbol": "$0.00"
+                  },
+                  "max_discount": 0,
+                  "max_discount_amount": {
+                    "amount": "0.00",
+                    "amountWithSymbol": "$0.00",
+                    "usdAmount": "0.00",
+                    "usdAmountWithSymbol": "$0.00",
+                    "priceShowStyle": "0"
+                  },
+                  "delivery_id": null
+                }
+              ],
+              "subject": "1",
+              "channelType": "0",
+              "categoryInfo": [],
+              "pool_list": [],
+              "max_discount_convert_by_app_currency": {
+                "amount": "0.00",
+                "amountWithSymbol": "$0.00",
+                "usdAmount": "0.00",
+                "usdAmountWithSymbol": "$0.00",
+                "priceShowStyle": "0"
+              }
+            }
+          ],
+          "premiumFlagNew": {
+            "productRecommendByGroup": 0,
+            "secondSeriesId": "303",
+            "brandSeriesType": null,
+            "series_badge_name": "Oceya",
+            "seriesId": "10326"
+          },
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/08/6c/1780892493b8d5b91989837f683076777be7f4f3d9.jpg",
+              "goods_id": "398716771",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/22/e2/177942534361ad29ae6ce576b7e10be34483dfc1a7.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/03/98/17777381157d036c029324f7a0abf73c2fdd9315a2.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/01/16/f8/176856433483ca05bff46114738b93724382ce0cae.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/08/70/1780905198f4f21ad2af8af3866c237301758d0bf8.jpg",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": {
+                "materialValueKey": "custom",
+                "component": "general",
+                "discountPrice": null,
+                "bgImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/ec/1789875616303a5d063cdeb3dbe15a5baf0197597d.png",
+                "bgImageSize": {
+                  "width": "340",
+                  "height": "60"
+                },
+                "shapedImage": null,
+                "shapedImageSize": null,
+                "shapedBgImage": null,
+                "bigCardBgImage": null,
+                "bigCardBgImageSize": null,
+                "bigCardShapedImage": null,
+                "bigCardShapedImageSize": null,
+                "saveLabelLang": null,
+                "saveFontColor": null,
+                "labelLang": "Save $3.01",
+                "secondLabelLang": null,
+                "fontColor": "#FFFFFF",
+                "backgroundColor": null,
+                "appTraceInfo": "belt_600533535",
+                "endTime": null,
+                "icon": null,
+                "transparentImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/04/1789875619be5a0a70305c9adcdf118f8d58947bc1.png",
+                "transparentImageSize": {
+                  "width": "215",
+                  "height": "40"
+                },
+                "bigCardTransparentImage": null,
+                "bigCardTransparentImageSize": null,
+                "emphasizedText": null,
+                "currentTime": null
+              }
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/02/05/fa/17702803193096f4e530ddd73fabd2f992c51746a8_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/16/a3/1768564326959b1741db1fb3bb998a01cc59cdbb51_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/04/3f/17805605170d527e1a5a61647c48526bd4c5db696e_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/16/17/176856432864dd78fe200d7b1b5a626580b276d599_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/16/1c/176856433066e7201fa724f3c5e9f380e6741aa3be_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/16/58/1768564331d72b85f45773f96ef0033131737dca5b_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/01/16/7e/1768564325e104e9abf6dfdb3394ac62212333b882_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/02/05/9b/1770280320ca4010178a5da474731d0780a031dd6f_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/02/05/fa/17702803193096f4e530ddd73fabd2f992c51746a8_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/02/05/fa/17702803193096f4e530ddd73fabd2f992c51746a8_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/02/05/fa/17702803193096f4e530ddd73fabd2f992c51746a8_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "upperRightFlexibleLabel": {
+              "twoColumnStyle": {
+                "contentType": "custom",
+                "displayType": "text",
+                "labelLang": "13-16 Years",
+                "fontColor": "#000000",
+                "backgroundColor": "#ffffffcc",
+                "appTraceInfo": "flexibleLabel_600160561",
+                "borderColor": "#ffffff7f"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "400+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_400+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "v2ProductAttributeLabelList": [],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$9.68",
+              "usdAmount": null,
+              "priceShowStyle": "9",
+              "discountPercent": "24",
+              "discountPrice": "$3.01",
+              "description": "after coupon",
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_9.68|pri_12.69",
+                "isFlashSale": "0",
+                "otherMarks": "estimated_price_3_estimate",
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "promotion_id_101564143|price_show_I8mpqvy73i1j23"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "rankInfo": {
+            "productDetailStyle": null,
+            "productDetailCartStyle": null,
+            "overviewCarStyle": null,
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_rank_average": "4.67",
+          "comment_num": 87,
+          "percent_overall_fit": {
+            "true_size": "94%",
+            "large": "3%",
+            "small": "3%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|roi_25245|rdg_92|gfc99|gfc83|gfc61|ft_331|rs_4|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.011761_v3847-us|ctr_0.01207_v3847-us|abr_0.167167_v3847-us|cvr_0.021582_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.004117|gdup_9.224378|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "9_1_2>knna_mind_v3@knn_v1038us&0.545105",
+            "fine_mark": "0_fs_0.9912_3349",
+            "rough_mark": "0_prs_6.9446E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/pi/2026/02/05/fa/17702803193096f4e530ddd73fabd2f992c51746a8_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [
+              {
+                "typeId": 32,
+                "sortIndex": -1
+              }
+            ],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 6,
+          "detail_url": "/Kids-Teen-Girls-White-Polka-Dot-Print-Halter-Dress-Cute-Summer-Backless-Mini-Dress-Double-Layer-Ruffled-Hem-Outfits-For-Holiday-Family-Vacation-p-398716771.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_398716771%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/13/1778468331f86b46d5f80d586a26dea7ffed2bc4cb.jpg",
+          "fromSkuCode": "I9mmihnl9h99yr",
+          "brandCode": "12xn4",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "0",
+          "priority": "1",
+          "spu": "z250513673215",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 439562549, goodsSn| sz260309091425005534003, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "439562549",
+          "goods_sn": "sz260309091425005534003",
+          "productRelationID": "z250513673215",
+          "goods_img": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/7b/1778468322416eb6f8cc4c98fb8147692a7ce5d668_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/11/a3/17784683241eb70a5638849aaea8da597132f20c91_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/11/34/1778468325ced3a896fcabed4ed83f9ce1286a000e_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/11/6b/1778468327bc373c74e6d3605968f6e668e3758867_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/05/11/80/17784683288878743235655fb41616ca914a3f1aa6_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Pariaura Women's Fashionable Elegant Printed Waist Dress Polka Dot Dresses For Women Retro Dresses For Women",
+          "goods_url_name": "Pariaura-Women-s-Fashionable-Elegant-Printed-Waist-Dress-Polka-Dot-Dresses-For-Women-Retro-Dresses-For-Women",
+          "cat_id": "12478",
+          "cate_name": "Women Midi Dresses",
+          "stock": "1",
+          "store_code": "7361015617",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "17.89",
+            "amountWithSymbol": "$17.89",
+            "usdAmount": "17.89",
+            "usdAmountWithSymbol": "$17.89",
+            "priceShowStyle": "17"
+          },
+          "salePrice": {
+            "amount": "13.51",
+            "amountWithSymbol": "$13.51",
+            "usdAmount": "13.51",
+            "usdAmountWithSymbol": "$13.51",
+            "priceShowStyle": "13"
+          },
+          "discountPrice": {
+            "amount": "4.38",
+            "amountWithSymbol": "$4.38",
+            "usdAmount": "4.38",
+            "usdAmountWithSymbol": "$4.38",
+            "priceShowStyle": "4"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "4.38",
+            "amountWithSymbol": "$4.38",
+            "usdAmount": "4.38",
+            "usdAmountWithSymbol": "$4.38",
+            "priceShowStyle": "4"
+          },
+          "retailDiscountPercent": "24",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "24",
+          "original_discount": "11",
+          "promotionInfo": [
+            {
+              "typeId": "32",
+              "dsaEndTime": "Valid before Oct 04, 23:59",
+              "startTimestamp": "1789970400",
+              "id": "101564143",
+              "mall_code": "1",
+              "mall_code_list": [
+                "1"
+              ],
+              "category_info": [],
+              "every_body_price_type": "1",
+              "endTime": "2026-10-04 23:59:59",
+              "isReturn": "1",
+              "endTimestamp": "1791129599",
+              "isFullShop": "0",
+              "isDeletePromotion": "0",
+              "isAddBuy": "",
+              "singleNum": "0",
+              "singleRemainNum": "",
+              "saleNumScene": "",
+              "buyLimitType": "",
+              "language_key": "",
+              "aggregatePromotionBusiness": {
+                "estimatedMultiLang": "Estimated",
+                "withCouponMultiLang": "after coupon",
+                "estimatedPriceMultiLang": "Estimated {0}"
+              },
+              "aggregateMemberResult": {},
+              "promotionActivityPriority": 0,
+              "promotion_logo_type": "23",
+              "rules": [
+                {
+                  "type": 5,
+                  "value": 0,
+                  "discount": {
+                    "type": 16,
+                    "value": 0,
+                    "enjoy_goods_num": 0,
+                    "value_amount": {
+                      "amount": "0.0",
+                      "amountWithSymbol": "$0.00",
+                      "usdAmount": "0.00",
+                      "usdAmountWithSymbol": "$0.00"
+                    },
+                    "gift_coupons": []
+                  },
+                  "value_amount": {
+                    "amount": "0",
+                    "amountWithSymbol": "$0.00",
+                    "usdAmount": "0.00",
+                    "usdAmountWithSymbol": "$0.00"
+                  },
+                  "max_discount": 0,
+                  "max_discount_amount": {
+                    "amount": "0.00",
+                    "amountWithSymbol": "$0.00",
+                    "usdAmount": "0.00",
+                    "usdAmountWithSymbol": "$0.00",
+                    "priceShowStyle": "0"
+                  },
+                  "delivery_id": null
+                }
+              ],
+              "subject": "1",
+              "channelType": "0",
+              "categoryInfo": [],
+              "pool_list": [],
+              "max_discount_convert_by_app_currency": {
+                "amount": "0.00",
+                "amountWithSymbol": "$0.00",
+                "usdAmount": "0.00",
+                "usdAmountWithSymbol": "$0.00",
+                "priceShowStyle": "0"
+              }
+            }
+          ],
+          "premiumFlagNew": {
+            "brandId": "81263",
+            "productRecommendByGroup": 0,
+            "secondSeriesId": "376",
+            "brandSeriesType": "1",
+            "brand_badge_name": "Pariaura",
+            "brand_logo_url_left": "https://img.ltwebstatic.com/images3_ps1/2024/10/31/68/1730364925bb9b2fc172c2d25f282af24a38d920b7_fill_white.png",
+            "brand_code": "12xn4",
+            "series_badge_name": "SHEIN PariChic",
+            "series_logo_url_left": "https://img.ltwebstatic.com/v4/p/pics1/2026/06/05/c7/1780629860528c7dbd12264918c53ff2f70fce28ae.png",
+            "series_logo_url_right": "https://img.ltwebstatic.com/v4/p/pics1/2026/06/05/c7/1780629860528c7dbd12264918c53ff2f70fce28ae.png",
+            "seriesId": "8876",
+            "brandName": "Pariaura"
+          },
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/11/c2/1783760517e05a92f09de26cf9900e8bba769d0221.jpg",
+              "goods_id": "439562549",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/22/cd/17794328972fc767d07d8f243ae1f5b28ad8b16ebb.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/02/24/63/17719018135be894c98cdae417504c660cddc6ebe1.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2025/10/27/e1/17615558164b3546f054aa396cf247e701fc6af550.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/06/3e/178333121246007d30085c43302099bc5e9e3375ef.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/18/7a/1779080979fb84f3827e8957afece1229ddc5c62e2.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/18/2f/1779081213fccbcef86c392d04fba2acb7e341af78.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/13/1778468331f86b46d5f80d586a26dea7ffed2bc4cb.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/01/3f/1780279142d1d8def8c60827a515b4b07cba5e7b1b.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/04/21/6c/1776759921b2f1f4b306ac2e90ba869f2b34f303fb.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2025/06/18/6d/17502118808fd239cdbe9f43d1d2bb64dbcc9467e1.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/07/06/1c/17833312207d805ec1303ef54977706cc4202111d6.jpg",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": {
+                "materialValueKey": "custom",
+                "component": "general",
+                "discountPrice": null,
+                "bgImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/0c/17898753100c0f46471ee40bda8880638194045446.png",
+                "bgImageSize": {
+                  "width": "340",
+                  "height": "40"
+                },
+                "shapedImage": null,
+                "shapedImageSize": null,
+                "shapedBgImage": null,
+                "bigCardBgImage": null,
+                "bigCardBgImageSize": null,
+                "bigCardShapedImage": null,
+                "bigCardShapedImageSize": null,
+                "saveLabelLang": null,
+                "saveFontColor": null,
+                "labelLang": "Save $4.38",
+                "secondLabelLang": null,
+                "fontColor": "#FFFFFF",
+                "backgroundColor": null,
+                "appTraceInfo": "belt_600533534",
+                "endTime": null,
+                "icon": null,
+                "transparentImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/52/1789875313d8f669cdc3356868daacbe3958a99d1b.png",
+                "transparentImageSize": {
+                  "width": "215",
+                  "height": "40"
+                },
+                "bigCardTransparentImage": null,
+                "bigCardTransparentImageSize": null,
+                "emphasizedText": null,
+                "currentTime": null
+              }
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/7b/1778468322416eb6f8cc4c98fb8147692a7ce5d668_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/a3/17784683241eb70a5638849aaea8da597132f20c91_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/34/1778468325ced3a896fcabed4ed83f9ce1286a000e_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/6b/1778468327bc373c74e6d3605968f6e668e3758867_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/80/17784683288878743235655fb41616ca914a3f1aa6_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/7b/1778468322416eb6f8cc4c98fb8147692a7ce5d668_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/05/11/7b/1778468322416eb6f8cc4c98fb8147692a7ce5d668_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/7b/1778468322416eb6f8cc4c98fb8147692a7ce5d668_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "upperLeftPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "subscript",
+                "displayType": "series_jointly_image",
+                "image": "https://img.ltwebstatic.com/v4/p/pics1/2026/06/05/c7/1780629860528c7dbd12264918c53ff2f70fce28ae.png",
+                "appTraceInfo": "lu_corner_mark_series_jointly_image_8876"
+              }
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "1.8k+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_1.8k+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "trendLabel": {
+              "trendIpImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpBigImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpLang": "Top Trends",
+              "trendLabel": {
+                "borderColor": null,
+                "borderWidth": null,
+                "labelName": "#ModSummer",
+                "bgColor": "#F4EFFF",
+                "fontColor": "#9462FF",
+                "icon": null,
+                "iconType": null
+              },
+              "routingUrl": "/sales/trend_landing_page?data=%7B%22top_goods_id%22%3A%22439562549%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendtag_entry%22%2C%22product_select_id%22%3A%2250099818%22%2C%22goodsId%22%3A%22439562549%22%2C%22cate_ids%22%3A%2212478%22%2C%22productSelectId_scUrlId%22%3A%2250099818_15850099818%22%2C%22trend_word_id%22%3A%228265%22%7D",
+              "contentRoutingUrl": "/sales/trend_landing_page?data=%7B%22top_goods_id%22%3A%22439562549%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendtag_entry%22%2C%22product_select_id%22%3A%2250099818%22%2C%22goodsId%22%3A%22439562549%22%2C%22cate_ids%22%3A%2212478%22%2C%22productSelectId_scUrlId%22%3A%2250099818_15850099818%22%2C%22trend_word_id%22%3A%228265%22%7D",
+              "appTraceInfo": "trend_tag_8265|product_select_id_50099818",
+              "showPosition": "aboveTitle",
+              "displayDesc": "Retro shapes meet today's summer style.",
+              "trendWordId": "8265",
+              "trendShopCode": "-",
+              "productSelectId": "50099818",
+              "productSelectUrlId": "15850099818",
+              "trendType": "trend",
+              "carrierType": "61",
+              "highEffect": "0",
+              "carrierTypeName": "选品主题",
+              "contentCarrierId": "50099818",
+              "carrierSubTypeName": "潮流趋势",
+              "sceneId": "-",
+              "carrierSubType": "62"
+            },
+            "v2ProductAttributeLabelList": [
+              {
+                "contentType": "ranking",
+                "appTraceInfo": "600117618`1`-`-`-",
+                "tagId": "600117618",
+                "otherMark": "list_sorting_tag_600117618_-_-"
+              }
+            ],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$13.51",
+              "usdAmount": null,
+              "priceShowStyle": "13",
+              "discountPercent": "24",
+              "discountPrice": "$4.38",
+              "description": "after coupon",
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_13.51|pri_17.89",
+                "isFlashSale": "0",
+                "otherMarks": "estimated_price_3_estimate",
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "promotion_id_101564143|price_show_I9mmihnl9h99yr"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "rankInfo": {
+            "productDetailStyle": null,
+            "productDetailCartStyle": null,
+            "overviewCarStyle": null,
+            "oneColumnStyle": null,
+            "twoColumnStyle": {
+              "tagType": null,
+              "subscriptType": null,
+              "actionDataTagShow": null,
+              "tagName": "#4 Bestseller in Wedding Women Midi Dresses",
+              "tagColor": "#a86104",
+              "bgColor": "#fff8eb",
+              "icon": "https://img.ltwebstatic.com/images3_ccc/2023/07/25/16902725561bbf1a4128275fa9bda56d25e07f08b6.png",
+              "tagId": null,
+              "appTraceInfo": "show_rank_type_15",
+              "rankTypeText": "#4 Bestseller",
+              "composeIdText": "in Wedding Women Midi Dresses",
+              "routeUrl": "/sales/ranking_list?data=%7B%22content_carrier_id%22%3A%225232410%22%2C%22ranking_from%22%3A%22recommend%22%2C%22src_module%22%3A%22-%22%2C%22page_from%22%3A%22detail%22%2C%22carrier_sub_type%22%3A%2215%22%2C%22goods_id%22%3A%22439562549%22%2C%22board_generate_type%22%3A%22GOODS_ATTRIBUTE%60GOODS_CATEGORY_MALL%22%7D",
+              "carrierSubType": "15",
+              "carrierId": "5232410",
+              "materialValueKey": "best_sellers",
+              "title": "Bestseller in Wedding Women Midi Dresses",
+              "score": 4,
+              "cateId": "12478",
+              "boardGenerateType": "GOODS_ATTRIBUTE`GOODS_CATEGORY_MALL",
+              "carrierTypeName": "榜单",
+              "carrierSubTypeName": "热销榜",
+              "carrierType": "14",
+              "srcIdentifier": null,
+              "infoFlow": null,
+              "strategy": "5077",
+              "description": null
+            },
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_num_show": "500+",
+          "comment_rank_average": "4.58",
+          "comment_num": 533,
+          "percent_overall_fit": {
+            "true_size": "86%",
+            "large": "3%",
+            "small": "11%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|roi_24720|rdg_14|gfc99|gfc83|gfc61|ft_331|rs_4|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.010913_v3847-us|ctr_0.01159_v3847-us|abr_0.140264_v3847-us|cvr_0.044283_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.007091|gdup_13.422819|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.599786>keyword_script_hot>all_words_expand_script_hot>operation_newuser_v2>all_words_new_user_v5>search_nearline@mmd_65727>knna_reorder_eff_aml_expr_v3@knn_v1211v3us&0.492126",
+            "fine_mark": "0_fs_0.99_3349",
+            "rough_mark": "0_prs_6.8399E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/pi/2026/05/11/7b/1778468322416eb6f8cc4c98fb8147692a7ce5d668_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [
+              {
+                "typeId": 32,
+                "sortIndex": -1
+              }
+            ],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 7,
+          "detail_url": "/Pariaura-Women-s-Fashionable-Elegant-Printed-Waist-Dress-Polka-Dot-Dresses-For-Women-Retro-Dresses-For-Women-p-439562549.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_439562549%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/30/ba/1782820221bc6489816aba8d78c4b1f28767b8d7f3.jpg",
+          "fromSkuCode": "I23np4ad4nam",
+          "brandCode": "1blsm",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "0",
+          "priority": "1",
+          "spu": "z250929323789",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 340670984, goodsSn| sz25092932378927351, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "340670984",
+          "goods_sn": "sz25092932378927351",
+          "productRelationID": "z250929323789",
+          "goods_img": "//img.ltwebstatic.com/v4/j/pi/2026/06/30/fa/178282020465850b6551446377c121554d01201c52_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/pi/2026/06/30/4e/1782820207b558d5f152f92aa51b33d29adc7b5c8e_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/06/30/ed/17828202095cc46fa09ef408d6fa9a11bafa2aab6f_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/06/30/de/178282021103968f6c436b8e3a2b46230d17fe731e_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/06/30/ba/178282021357d7ed455638ab53033675b53ba4e4e2_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/06/30/bc/1782820215c3db97b5aaf6deed951803e5e6eea0cf_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/06/30/17/1782820217af25b6da4dcb56d8d7df1fd7cd860438_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/pi/2026/06/30/2b/178282021856ed5ba2d4a4afd9f002b9ac42c92d36_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Aloruh Halter Tie Metal Buckle Bodycon Mini Dress For Women Party Night Black Summer Sexy",
+          "goods_url_name": "Aloruh-Halter-Tie-Metal-Buckle-Bodycon-Mini-Dress-For-Women-Party-Night-Black-Summer-Sexy",
+          "cat_id": "12475",
+          "cate_name": "Women Mini Dresses",
+          "stock": "1",
+          "store_code": "4534970445",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "18.09",
+            "amountWithSymbol": "$18.09",
+            "usdAmount": "18.09",
+            "usdAmountWithSymbol": "$18.09",
+            "priceShowStyle": "18"
+          },
+          "salePrice": {
+            "amount": "15.99",
+            "amountWithSymbol": "$15.99",
+            "usdAmount": "15.99",
+            "usdAmountWithSymbol": "$15.99",
+            "priceShowStyle": "15"
+          },
+          "discountPrice": {
+            "amount": "2.10",
+            "amountWithSymbol": "$2.10",
+            "usdAmount": "2.10",
+            "usdAmountWithSymbol": "$2.10",
+            "priceShowStyle": "2"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "2.10",
+            "amountWithSymbol": "$2.10",
+            "usdAmount": "2.10",
+            "usdAmountWithSymbol": "$2.10",
+            "priceShowStyle": "2"
+          },
+          "retailDiscountPercent": "12",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "12",
+          "original_discount": "12",
+          "premiumFlagNew": {
+            "brandId": "78904",
+            "productRecommendByGroup": 0,
+            "secondSeriesId": "269",
+            "brandSeriesType": "1",
+            "brand_badge_name": "Aloruh",
+            "brand_logo_url_left": "https://img.ltwebstatic.com/images3_ps1/2024/10/10/4c/1728541643ad984947f082b053362508398157e17a.png",
+            "brand_code": "1blsm",
+            "series_badge_name": "Aloruh",
+            "seriesId": "8290",
+            "brandName": "Aloruh"
+          },
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/30/ba/1782820221bc6489816aba8d78c4b1f28767b8d7f3.jpg",
+              "goods_id": "340670984",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/dps/PS202609116754/b30dad8db79be921a7c5f4db2fb33005f6dce069814350c9e270112da07ea599_square.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/08/44/17808814558680e377816e84dd2cb34c72c7835dd0.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/08/07/73/17860796929d3680e47374ef9fecfbb130d809458c.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/dps/PS2026082814160/a3958040498c7024f8f3c8df380ca14527a510a847c9fdc5d2d264ddc05fe77e_square.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/08/10/79/1786345229e7d2d9c210f05bc6d7cadc3e086e4628.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/pi/2026/08/07/cc/178607969423093e17a891793d8dfa2bba91f28831.jpg",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/j/dps/PS2026082814154/ac287e8a6829f344131f1e3ad393aad106171e063cb517bc0d1b84ad5c43a7a3_square.jpg",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": null
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/fa/178282020465850b6551446377c121554d01201c52_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/4e/1782820207b558d5f152f92aa51b33d29adc7b5c8e_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/ed/17828202095cc46fa09ef408d6fa9a11bafa2aab6f_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/de/178282021103968f6c436b8e3a2b46230d17fe731e_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/ba/178282021357d7ed455638ab53033675b53ba4e4e2_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/bc/1782820215c3db97b5aaf6deed951803e5e6eea0cf_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/17/1782820217af25b6da4dcb56d8d7df1fd7cd860438_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/2b/178282021856ed5ba2d4a4afd9f002b9ac42c92d36_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/30/fa/178282020465850b6551446377c121554d01201c52_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/pi/2026/06/30/fa/178282020465850b6551446377c121554d01201c52_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/pi/2026/06/30/fa/178282020465850b6551446377c121554d01201c52_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "upperLeftPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "subscript",
+                "displayType": "brand_image",
+                "image": "https://img.ltwebstatic.com/images3_ps1/2024/10/10/4c/1728541643ad984947f082b053362508398157e17a.png",
+                "appTraceInfo": "lu_corner_mark_brand_image_78904"
+              }
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "1.1k+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_1.1k+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "trendLabel": {
+              "trendIpImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpBigImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpLang": "Top Trends",
+              "trendLabel": {
+                "borderColor": null,
+                "borderWidth": null,
+                "labelName": "#HalterNecklines",
+                "bgColor": "#F4EFFF",
+                "fontColor": "#9462FF",
+                "icon": null,
+                "iconType": null
+              },
+              "routingUrl": "/sales/trend_landing_page?data=%7B%22top_goods_id%22%3A%22340670984%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendtag_entry%22%2C%22product_select_id%22%3A%222206635%22%2C%22goodsId%22%3A%22340670984%22%2C%22cate_ids%22%3A%2212475%22%2C%22productSelectId_scUrlId%22%3A%222206635_1582206635%22%2C%22trend_word_id%22%3A%223922%22%7D",
+              "contentRoutingUrl": "/sales/trend_landing_page?data=%7B%22top_goods_id%22%3A%22340670984%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendtag_entry%22%2C%22product_select_id%22%3A%222206635%22%2C%22goodsId%22%3A%22340670984%22%2C%22cate_ids%22%3A%2212475%22%2C%22productSelectId_scUrlId%22%3A%222206635_1582206635%22%2C%22trend_word_id%22%3A%223922%22%7D",
+              "appTraceInfo": "trend_tag_3922|product_select_id_2206635",
+              "showPosition": "aboveTitle",
+              "displayDesc": "Turn heads this szn in flirty & feminine halters",
+              "trendWordId": "3922",
+              "trendShopCode": "-",
+              "productSelectId": "2206635",
+              "productSelectUrlId": "1582206635",
+              "trendType": "trend",
+              "carrierType": "61",
+              "highEffect": "0",
+              "carrierTypeName": "选品主题",
+              "contentCarrierId": "2206635",
+              "carrierSubTypeName": "潮流趋势",
+              "sceneId": "-",
+              "carrierSubType": "62"
+            },
+            "v2ProductAttributeLabelList": [],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$15.99",
+              "usdAmount": null,
+              "priceShowStyle": "15",
+              "discountPercent": "12",
+              "discountPrice": "$2.10",
+              "description": null,
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_15.99|pri_18.09",
+                "isFlashSale": "0",
+                "otherMarks": null,
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "price_show_I23np4ad4nam"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "rankInfo": {
+            "productDetailStyle": null,
+            "productDetailCartStyle": null,
+            "overviewCarStyle": null,
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_rank_average": "4.51",
+          "comment_num": 90,
+          "percent_overall_fit": {
+            "true_size": "91%",
+            "large": "4%",
+            "small": "5%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|gfc99|gfc83|gfc61|ft_331|rs_4|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.012222_v3847-us|ctr_0.013017_v3847-us|abr_0.14145_v3847-us|cvr_0.024572_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.003893|gdup_13.928025|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.600625>keyword_script_hot>all_words_expand_script_hot>operation_newuser_v2>all_words_new_user_v5",
+            "fine_mark": "0_fs_0.9787_3349",
+            "rough_mark": "0_prs_6.1903E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/pi/2026/06/30/fa/178282020465850b6551446377c121554d01201c52_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 8,
+          "detail_url": "/Aloruh-Halter-Tie-Metal-Buckle-Bodycon-Mini-Dress-For-Women-Party-Night-Black-Summer-Sexy-p-340670984.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_340670984%7C0-2"
+        },
+        {
+          "goodsColorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/05/15/b0/17788392438ed300385bc5ab4bea4657caa1ffc4e2_square.png",
+          "fromSkuCode": "I3mp6r5r7zodh7",
+          "parentIds": [
+            "4436",
+            "2030",
+            "12472"
+          ],
+          "priorityMallType": "1",
+          "customizationFlag": "0",
+          "originAreaCodeList": [],
+          "isSkcMultiPrice": "0",
+          "priority": "1",
+          "spu": "z2605151751028386",
+          "soldOutStatus": false,
+          "productStockCheckLog": "goodsId| 482991110, goodsSn| sz260515175102838644446, mallCode| 1, isSale| 1, stock| 1",
+          "goods_id": "482991110",
+          "goods_sn": "sz260515175102838644446",
+          "productRelationID": "z2605151751028386",
+          "goods_img": "//img.ltwebstatic.com/v4/j/spmp/2026/08/26/e5/1787714753761d0ccc9ab0a5117b31b9c8ecdb4e0f_thumbnail_405x552.jpg",
+          "detail_image": [
+            "//img.ltwebstatic.com/v4/j/spmp/2026/08/27/d0/178781550334173554fc7b13368e11f822b4a88eac_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2026/08/27/e4/1787815509ca04c58293351ecc26bfed95e985ddb3_thumbnail_405x552.jpg",
+            "//img.ltwebstatic.com/v4/j/spmp/2026/05/15/b5/17788392369e314d23a47596680aaec96a30094a78_thumbnail_405x552.jpg"
+          ],
+          "goods_name": "Women's Sexy V-Neck Pleated Halter Neck Summer Party Nightclub Vacation Outing Dress Elegant",
+          "goods_url_name": "Women-s-Sexy-V-Neck-Pleated-Halter-Neck-Summer-Party-Nightclub-Vacation-Outing-Dress-Elegant",
+          "cat_id": "1727",
+          "cate_name": "Women Short Dresses",
+          "stock": "1",
+          "store_code": "1987503418",
+          "business_model": "0",
+          "mall_code": "1",
+          "is_on_sale": 1,
+          "retailPrice": {
+            "amount": "15.69",
+            "amountWithSymbol": "$15.69",
+            "usdAmount": "15.69",
+            "usdAmountWithSymbol": "$15.69",
+            "priceShowStyle": "15"
+          },
+          "salePrice": {
+            "amount": "13.99",
+            "amountWithSymbol": "$13.99",
+            "usdAmount": "13.99",
+            "usdAmountWithSymbol": "$13.99",
+            "priceShowStyle": "13"
+          },
+          "discountPrice": {
+            "amount": "1.70",
+            "amountWithSymbol": "$1.70",
+            "usdAmount": "1.70",
+            "usdAmountWithSymbol": "$1.70",
+            "priceShowStyle": "1"
+          },
+          "isInversion": "1",
+          "retailDiscountPrice": {
+            "amount": "1.70",
+            "amountWithSymbol": "$1.70",
+            "usdAmount": "1.70",
+            "usdAmountWithSymbol": "$1.70",
+            "priceShowStyle": "1"
+          },
+          "retailDiscountPercent": "11",
+          "isNewCoupon": "0",
+          "isSrpInversion": "1",
+          "srpDiscount": "0",
+          "srpDiscountPrice": {
+            "amount": "0.00",
+            "amountWithSymbol": "$0.00",
+            "usdAmount": "0.00",
+            "usdAmountWithSymbol": "$0.00",
+            "priceShowStyle": "0"
+          },
+          "unit_discount": "11",
+          "original_discount": "11",
+          "premiumFlagNew": {
+            "brandSeriesType": null
+          },
+          "productInfoLabels": {},
+          "quickship": "0",
+          "coupon_prices": [],
+          "video_url": "0",
+          "relatedColor": [],
+          "relatedColorNew": [
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/07/16/9c/1784169448a7387ed0faac5e400550c8d8ff88010c_square.png",
+              "goods_id": "482991110",
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/07/16/8f/1784170118329fe2b6e97421c13e5347a039555c1a_square.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/09/05/22/1788594418c15625add0aa19b6f224164c295ce715_square.png",
+              "goods_id": null,
+              "skc_name": null
+            },
+            {
+              "colorImage": "//img.ltwebstatic.com/v4/p/spmp/2026/05/15/b0/17788392438ed300385bc5ab4bea4657caa1ffc4e2_square.png",
+              "goods_id": null,
+              "skc_name": null
+            }
+          ],
+          "is_clearance": "0",
+          "grade_enums": [],
+          "productMaterial": {
+            "pictureBelt": {
+              "oneColumnStyle": null,
+              "twoColumnStyle": {
+                "materialValueKey": "custom",
+                "component": "general",
+                "discountPrice": null,
+                "bgImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/0c/17898753100c0f46471ee40bda8880638194045446.png",
+                "bgImageSize": {
+                  "width": "340",
+                  "height": "40"
+                },
+                "shapedImage": null,
+                "shapedImageSize": null,
+                "shapedBgImage": null,
+                "bigCardBgImage": null,
+                "bigCardBgImageSize": null,
+                "bigCardShapedImage": null,
+                "bigCardShapedImageSize": null,
+                "saveLabelLang": null,
+                "saveFontColor": null,
+                "labelLang": "Save $1.70",
+                "secondLabelLang": null,
+                "fontColor": "#FFFFFF",
+                "backgroundColor": null,
+                "appTraceInfo": "belt_600533534",
+                "endTime": null,
+                "icon": null,
+                "transparentImage": "https://img.ltwebstatic.com/v4/p/ccc/2026/09/20/52/1789875313d8f669cdc3356868daacbe3958a99d1b.png",
+                "transparentImageSize": {
+                  "width": "215",
+                  "height": "40"
+                },
+                "bigCardTransparentImage": null,
+                "bigCardTransparentImageSize": null,
+                "emphasizedText": null,
+                "currentTime": null
+              }
+            },
+            "extendAbtConfigInfo": {
+              "abtFlashSaleIPStyle": "orange"
+            },
+            "col2ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/26/e5/1787714753761d0ccc9ab0a5117b31b9c8ecdb4e0f_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/27/d0/178781550334173554fc7b13368e11f822b4a88eac_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/27/e4/1787815509ca04c58293351ecc26bfed95e985ddb3_thumbnail_405x552.jpg",
+                "//img.ltwebstatic.com/v4/j/spmp/2026/05/15/b5/17788392369e314d23a47596680aaec96a30094a78_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/spmp/2026/08/26/e5/1787714753761d0ccc9ab0a5117b31b9c8ecdb4e0f_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "col1ImageUI": {
+              "aspectRatio": "0.75",
+              "urls": [
+                "//img.ltwebstatic.com/v4/j/spmp/2026/08/26/e5/1787714753761d0ccc9ab0a5117b31b9c8ecdb4e0f_thumbnail_405x552.jpg"
+              ],
+              "otherMarks": null,
+              "goodsDetailExtraParams": null,
+              "transitionImage": "//img.ltwebstatic.com/v4/j/spmp/2026/08/26/e5/1787714753761d0ccc9ab0a5117b31b9c8ecdb4e0f_thumbnail_405x552.jpg",
+              "goodsDetailCropType": null,
+              "goodsDetailFirstImage": null
+            },
+            "lowerRightPositionInfo": {
+              "twoColumnStyle": {
+                "contentType": "color_information",
+                "appTraceInfo": "show_attribute_labels_-_color"
+              }
+            },
+            "salesLabel": {
+              "tagId": "1661",
+              "labelType": null,
+              "contentType": "custom",
+              "salesMultiLang": null,
+              "labelLang": "2.7k+ sold",
+              "icon": "",
+              "fontColor": "#666666",
+              "backgroundColor": "#ffffff",
+              "saleNumShow": null,
+              "appTraceInfo": "show_sales_label_02_1661_600014336_2.7k+_sold"
+            },
+            "showAddButtonLabel": "1",
+            "showAddButtonLabelStyle": "",
+            "trendLabel": {
+              "trendIpImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpBigImg": {
+                "imgUrl": "https://img.shein.com/images3/2024/01/11/b5/1704943286f85cebabf9566a322461955ae313fd11.png",
+                "width": "44",
+                "height": "14"
+              },
+              "trendIpLang": "Top Trends",
+              "trendLabel": {
+                "borderColor": null,
+                "borderWidth": null,
+                "labelName": "VIBECORE",
+                "bgColor": "#F4EFFF",
+                "fontColor": "#9462FF",
+                "icon": "https://img.ltwebstatic.com/images3_ccc/2024/07/25/0c/17218992763c90c1e58652d3c3ae23be19490aecc4.png",
+                "iconType": "new"
+              },
+              "routingUrl": "/store/home?data=%7B%22store_code%22%3A%221987503418%22%2C%22top_goods_id%22%3A%22482991110%22%2C%22main_goods_id%22%3A%22482991110%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendshop_entry%22%2C%22tab%22%3A%22items%22%2C%22scroll_index%22%3A%220%22%2C%22main_cate_id%22%3A%221727%22%2C%22refer_trigger_point%22%3A%22goods_card%22%2C%22refer_scene%22%3A%22search%22%7D",
+              "contentRoutingUrl": "/store/home?data=%7B%22store_code%22%3A%221987503418%22%2C%22top_goods_id%22%3A%22482991110%22%2C%22main_goods_id%22%3A%22482991110%22%2C%22entry_from%22%3A%22page_search%60-%60-%60trendshop_entry%22%2C%22tab%22%3A%22items%22%2C%22scroll_index%22%3A%220%22%2C%22main_cate_id%22%3A%221727%22%2C%22refer_trigger_point%22%3A%22goods_card%22%2C%22refer_scene%22%3A%22search%22%7D",
+              "trendStoreTabAbtValue": "",
+              "appTraceInfo": "trend_shop_code_1987503418_VIBECORE",
+              "showPosition": "aboveTitle",
+              "trendWordId": "-",
+              "trendShopCode": "1987503418",
+              "trendType": "fashionStore",
+              "fashionStoreName": "VIBECORE",
+              "fashionStoreLogo": "https://img.ltwebstatic.com/images3_ccc/2024/07/25/0c/17218992763c90c1e58652d3c3ae23be19490aecc4.png",
+              "carrierType": "61",
+              "carrierTypeName": "选品主题",
+              "contentCarrierId": "-",
+              "carrierSubTypeName": "时尚店铺",
+              "sceneId": "-",
+              "carrierSubType": "63"
+            },
+            "v2ProductAttributeLabelList": [
+              {
+                "contentType": "ranking",
+                "appTraceInfo": "600117618`1`-`-`-",
+                "tagId": "600117618",
+                "otherMark": "list_sorting_tag_600117618_-_-"
+              }
+            ],
+            "goodsDetailExtraParams": {
+              "buyboxTag": "0"
+            },
+            "fullPriceUI": {
+              "upGradeDescription": null,
+              "descriptionLeadingIconHC": null,
+              "price": "$13.99",
+              "usdAmount": null,
+              "priceShowStyle": "13",
+              "discountPercent": "11",
+              "discountPrice": "$1.70",
+              "description": null,
+              "descriptionLeadingIcon": null,
+              "color": "discount",
+              "originalColor": "discount",
+              "leadingIcon": {
+                "type": null
+              },
+              "trailingIcon": null,
+              "bi": {
+                "pri": "pri_13.99|pri_15.69",
+                "isFlashSale": "0",
+                "otherMarks": null,
+                "discount": null
+              },
+              "endTime": null,
+              "s3Price": null,
+              "retailPrice": null,
+              "recommendedRetailPrice": null,
+              "couponPrice": null,
+              "suggestedSalePrice": null,
+              "retailPriceDescription": null,
+              "style": [
+                "us"
+              ],
+              "firstSalePrice": null,
+              "pcPrice": null,
+              "leadingText": null,
+              "fullDescription": null
+            },
+            "otherMarks": "price_show_I3mp6r5r7zodh7"
+          },
+          "is_show_plus_size": "0",
+          "actTagFromCcc": {
+            "productDetailStyle": [],
+            "productDetailCartStyle": [],
+            "overviewCarStyle": [],
+            "oneColumnStyle": null,
+            "twoColumnStyle": null,
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "rankInfo": {
+            "productDetailStyle": null,
+            "productDetailCartStyle": null,
+            "overviewCarStyle": null,
+            "oneColumnStyle": null,
+            "twoColumnStyle": {
+              "tagType": null,
+              "subscriptType": null,
+              "actionDataTagShow": null,
+              "tagName": "#1 Bestseller in Sleeveless Women Short Dresses",
+              "tagColor": "#a86104",
+              "bgColor": "#fff8eb",
+              "icon": "https://img.ltwebstatic.com/images3_ccc/2023/07/25/16902725561bbf1a4128275fa9bda56d25e07f08b6.png",
+              "tagId": null,
+              "appTraceInfo": "show_rank_type_15",
+              "rankTypeText": "#1 Bestseller",
+              "composeIdText": "in Sleeveless Women Short Dresses",
+              "routeUrl": "/sales/ranking_list?data=%7B%22content_carrier_id%22%3A%225232460%22%2C%22ranking_from%22%3A%22recommend%22%2C%22src_module%22%3A%22-%22%2C%22page_from%22%3A%22detail%22%2C%22carrier_sub_type%22%3A%2215%22%2C%22goods_id%22%3A%22482991110%22%2C%22board_generate_type%22%3A%22GOODS_ATTRIBUTE%60GOODS_CATEGORY_MALL%22%7D",
+              "carrierSubType": "15",
+              "carrierId": "5232460",
+              "materialValueKey": "best_sellers",
+              "title": "Bestseller in Sleeveless Women Short Dresses",
+              "score": 1,
+              "cateId": "1727",
+              "boardGenerateType": "GOODS_ATTRIBUTE`GOODS_CATEGORY_MALL",
+              "carrierTypeName": "榜单",
+              "carrierSubTypeName": "热销榜",
+              "carrierType": "14",
+              "srcIdentifier": null,
+              "infoFlow": null,
+              "strategy": "5077",
+              "description": null
+            },
+            "preferenceTagStyle": null,
+            "msg": null
+          },
+          "comment_rank_average": "4.56",
+          "comment_num": 46,
+          "percent_overall_fit": {
+            "true_size": "91%",
+            "large": "8%",
+            "small": "1%"
+          },
+          "is_single_sku": "0",
+          "ext": {
+            "rec_mark": "spri_3783_1_1|roi_22155|rdg_14|gfc99|gfc83|gfc61|ft_331|rs_4|gk|S_2_1004_2030|trace_ab3bd55a97069beb|ctc_0.009688_v3847-us|ctr_0.010341_v3847-us|abr_0.15198_v3847-us|cvr_0.035716_v3606-us|sre_seq_5|S_2_1004_2030|cvc_0.006893|gdup_12.185933|rkt|trace_ab3bd55a97069beb|zk|se_99_1",
+            "recall_mark": "11_1_2>knna_mind_v3@knn_v1038us&0.582574>keyword_script_hot>all_words_expand_script_hot>operation_newuser_v2>all_words_new_user_v5",
+            "fine_mark": "0_fs_0.9887_3349",
+            "rough_mark": "0_prs_4.3402E-4_3875",
+            "marks": "rfc_1988_1825|rf_3|ms_2|rsrc_2|S_2_1004_2030"
+          },
+          "isShowAdditionalDiscount": "0",
+          "usePositionInfo": "1",
+          "dynamic_ext": {},
+          "goods_priority": "1",
+          "goods_img_thumb": "//img.ltwebstatic.com/v4/j/spmp/2026/08/26/e5/1787714753761d0ccc9ab0a5117b31b9c8ecdb4e0f_thumbnail_200x.webp",
+          "isBsProductCard": true,
+          "promotionModule": {
+            "rawModule": [],
+            "integrityPromotionInfo": {},
+            "content": {}
+          },
+          "pretreatInfo": {
+            "mixPromotionInfo": [],
+            "promotionReady": true
+          },
+          "index": 9,
+          "detail_url": "/Women-s-Sexy-V-Neck-Pleated-Halter-Neck-Summer-Party-Nightclub-Vacation-Outing-Dress-Elegant-p-482991110.html?mallCode=1&pageListType=4&detailBusinessFrom=0-1_482991110%7C0-2"
+        }
+      ]
+    }
+  }
+}

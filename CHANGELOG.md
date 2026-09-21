@@ -9,6 +9,38 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Verified live, 2026-09-21 (later the same day) — real end-to-end parse of live data
+- `shein_parser.parse_search_results()` was run for the first time against
+  a genuinely fresh, real `window.gbRawData` snapshot — fetched live via
+  the built-in browser-rendering tool navigating
+  `https://us.shein.com/pdsearch/dress/` (no `/risk/challenge` redirect
+  this time), not a hand-written fixture. All 10 of the first batch's
+  products parsed cleanly (`source_used=gb_raw_data`), and the resulting
+  `Product` rows round-tripped through `output_writer.finish_run()` as a
+  clean `status=complete`, exit `0`, `price_confirmed_pct: 1.0` run.
+  Real example row: `{"sku": "460570094", "title": "Louniche Women's
+  Summer Blue And White Stripe Round Neck Waist Gathered Maxi Dress...",
+  "brand": "Louniche", "price": 9.93, "original_price": 15.89,
+  "discount_pct": 38.0, "rating": 4.23, "review_count": 300, "in_stock":
+  true}`.
+- Saved as `tests/fixtures/shein_search_live_dress_20260921.json` (a real
+  capture, not synthetic — see its own `_provenance` field) with a new
+  permanent `smoke_test.py` regression check
+  (`parse_search_results against a REAL live capture...`) asserting all
+  10 rows parse to plausible products and the `finish_run()` round-trip
+  stays clean, so this doesn't silently regress.
+- **Still NOT closed by this**: this exercised `shein_parser.py`'s parsing
+  logic against real data, not this repo's own `playwright_scraper.py` /
+  `selenium_scraper.py` / `puppeteer_scraper.py` end-to-end (browser
+  launch, navigation, scroll loop, retries). Attempting that live run
+  found that both this repo's cloud build environment and the linked
+  device's own shell currently have network egress policies that block
+  `us.shein.com` directly (`403 blocked-by-allowlist`) AND block
+  downloading the Chromium binary Playwright itself needs
+  (`cdn.playwright.dev` also `blocked-by-allowlist`) — so a full engine
+  run needs either a network policy change or a different execution
+  environment, not a code fix. See `TESTING.md` for what to try.
+
 ### Added — initial build, fifth member of the 2scraper family
 - First build of `shein-scraper`, following `stockx-scraper` /
   `skyscanner-scraper` / `lidl-scraper` / `perplexity-scraper`'s established

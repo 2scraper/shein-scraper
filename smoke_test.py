@@ -12,11 +12,21 @@ shein_parser.py's module docstring and TESTING.md), not invented ones —
 this is a stronger starting position than most sibling repos had on their
 first build. `tests/fixtures/shein_risk_challenge_real.html` is a
 scrubbed, REAL capture of the live bot-mitigation incident (not
-synthetic). A green run here proves the architecture (exit codes,
-dedupe, precedence, credential redaction, CLI validation, engines
-importing cleanly) AND that the confirmed data shapes parse correctly —
-it does NOT prove this repo's own engines get the same treatment SHEIN
-gave the browser-rendering tool that captured this data (see TESTING.md).
+synthetic); `tests/fixtures/shein_search_live_dress_20260921.json` is a
+second, later REAL capture — a genuine `window.gbRawData` snapshot from a
+clean (non-challenged) live search — used to prove `parse_search_results()`
+round-trips through `output_writer.finish_run()` as a clean `complete` run
+against real data, not just synthetic fixtures. A green run here proves
+the architecture (exit codes, dedupe, precedence, credential redaction,
+CLI validation, engines importing cleanly) AND that the confirmed data
+shapes parse correctly against both synthetic AND real captured data — it
+does NOT yet prove this repo's own engine scripts (browser launch, scroll
+loop, retries) get the same treatment against the live site end-to-end;
+both real captures so far came from the built-in browser-rendering tool,
+not `playwright_scraper.py` itself (see TESTING.md — network egress to
+shein.com and to the Chromium download CDN is currently blocked from both
+this repo's cloud build environment and the linked device's own shell, so
+that last step is still open).
 
 Run directly: `python3 smoke_test.py`
 """
@@ -568,6 +578,62 @@ def _():
     sold_out = next(p for p in result_a.products if p.sku == "222222222")
     assert sold_out.in_stock is False
     assert sold_out.original_price is None, "same as sale price — not a real 'was' price, correctly omitted"
+
+
+@check("parse_search_results against a REAL live capture (2026-09-21, tests/fixtures/shein_search_live_dress_20260921.json) round-trips through finish_run() as a clean complete run")
+def _():
+    # Unlike every other fixture in this file, this one is not synthetic —
+    # it's a real window.gbRawData snapshot fetched live from
+    # https://us.shein.com/pdsearch/dress/ (see the fixture's own
+    # "_provenance" field). This is this repo's first end-to-end
+    # confirmation that shein_parser.py's PRIMARY path produces a clean,
+    # complete output_writer.finish_run() result against genuinely fresh
+    # live data, not just against a hand-built fixture — see CHANGELOG.md.
+    real = json.loads((ROOT / "tests" / "fixtures" / "shein_search_live_dress_20260921.json").read_text(encoding="utf-8"))
+    assert "_provenance" in real, "this fixture should carry its own provenance note"
+
+    result = sp.parse_search_results("", max_results=10, raw_data=real)
+    assert result.source_used == "gb_raw_data"
+    assert len(result.products) == 10
+    assert result.total_available and result.total_available > 10000, (
+        "the real query this was captured from had tens of thousands of matches"
+    )
+
+    # Every real row parsed to a plausible product — never a null-filled
+    # row silently passed off as a match (same check TESTING.md step 2
+    # tells a contributor to do by hand; this makes it a permanent
+    # regression test instead of a one-time manual read).
+    for p in result.products:
+        assert p.sku and p.sku.isdigit()
+        assert p.source == "shein.com"
+        assert p.title
+        assert p.price is not None and p.price > 0
+        assert p.currency == "USD"
+        assert p.price_source == "embedded_json"
+        assert p.product_url and p.product_url.startswith("https://us.shein.com/")
+        assert p.in_stock is True  # every product in this real batch was in stock
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = str(Path(tmp) / "shein_live10.json")
+        exit_code = output_writer.finish_run(
+            products=result.products,
+            out_path=out_path,
+            fmt="json",
+            engine="playwright",
+            url="https://us.shein.com/pdsearch/dress/",
+            pages_requested=1,
+            pages_completed=1,
+            failed_pages=[],
+            blocked=False,
+            remote_api_error=False,
+            allow_empty=False,
+            started_at=0.0,
+            price_confirmed_pct=1.0,
+        )
+        assert exit_code == output_writer.EXIT_OK
+        meta = json.loads(Path(out_path + ".meta.json").read_text(encoding="utf-8"))
+        assert meta["status"] == "complete"
+        assert meta["product_count"] == 10
 
 
 @check("parse_search_results respects max_results and honors --allow-empty style zero-result input")

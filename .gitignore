@@ -3,6 +3,7 @@
 *.csv
 !sample_output.json
 !sample_output.csv
+!tests/fixtures/*.json
 shein_results.*
 *_debug.html
 *_debug.png
