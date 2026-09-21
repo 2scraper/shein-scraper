@@ -454,6 +454,61 @@ def _():
     assert parsed["pass_token"] == "bbbb"
 
 
+@check("captcha_solver.build_injection_script (added 2026-09-21, closing the injection gap Roman flagged): correct JS per widget type, None where there's no generic injection point")
+def _():
+    # Same honesty caveat as everywhere else in this file: these are each
+    # widget's own STANDARD, publicly-documented client-integration
+    # convention, never anything confirmed against a real shein.com (or
+    # any family-site) widget capture — see build_injection_script's own
+    # docstring. This check only proves the JS TEXT is built correctly
+    # for a given (captcha_type, solution) pair, not that any real widget
+    # actually reads the field/callback it targets.
+    turnstile = captcha_solver.build_injection_script(captcha_solver.CaptchaType.CLOUDFLARE_TURNSTILE, "tok-abc")
+    assert turnstile is not None
+    assert "cf-turnstile-response" in turnstile
+    assert json.dumps("tok-abc") in turnstile
+
+    recaptcha_v2 = captcha_solver.build_injection_script(captcha_solver.CaptchaType.RECAPTCHA_V2, "tok-def")
+    assert recaptcha_v2 is not None
+    assert "g-recaptcha-response" in recaptcha_v2
+    assert json.dumps("tok-def") in recaptcha_v2
+
+    hcaptcha = captcha_solver.build_injection_script(captcha_solver.CaptchaType.HCAPTCHA, "tok-ghi")
+    assert hcaptcha is not None
+    assert "h-captcha-response" in hcaptcha
+
+    # reCAPTCHA v3 is invisible and its token is typically consumed
+    # straight into the SITE'S OWN JS (often an XHR), never read back off
+    # a DOM element — guessing site-specific consumption code would
+    # violate this shared module's own no-site-knowledge charter, so this
+    # deliberately returns None rather than a script that does nothing.
+    assert captcha_solver.build_injection_script(captcha_solver.CaptchaType.RECAPTCHA_V3, "tok-jkl") is None
+
+    # GeeTest's solution is several fields together (see
+    # scraper_api_client.solve_and_wait's docstring) — the injection
+    # script must JSON.parse the JSON-encoded solution string and try
+    # both prefixed/unprefixed field-name conventions.
+    v3_solution = json.dumps({"challenge": "chal1", "validate": "val1", "seccode": "sec1"})
+    geetest_v3 = captcha_solver.build_injection_script(captcha_solver.CaptchaType.GEETEST_V3, v3_solution)
+    assert geetest_v3 is not None
+    assert "geetest_challenge" in geetest_v3 and "geetest_validate" in geetest_v3 and "geetest_seccode" in geetest_v3
+    assert "JSON.parse" in geetest_v3
+
+    v4_solution = json.dumps({"captcha_id": "cid1", "lot_number": "lot1", "pass_token": "pt1", "gen_time": "gt1", "captcha_output": "co1"})
+    geetest_v4 = captcha_solver.build_injection_script(captcha_solver.CaptchaType.GEETEST_V4, v4_solution)
+    assert geetest_v4 is not None
+    assert "__2captcha_geetest_v4_solution" in geetest_v4
+    assert "geetest_v4_solved" in geetest_v4
+
+
+@check("all three engines actually call build_injection_script from their 'solved' branch — the gap Roman asked about ('в любых случаях использование решения должно быть') stays closed, not silently regressed")
+def _():
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert "build_injection_script" in src, f"{path} no longer imports/calls build_injection_script"
+        assert "CaptchaType(result[\"captcha_type\"])" in src, f"{path} doesn't build a CaptchaType from the solved result"
+
+
 # --------------------------------------------------------------------------- #
 # env_config — SHEIN_* keys, placeholder detection, precedence (family-shared)
 # --------------------------------------------------------------------------- #

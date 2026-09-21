@@ -14,31 +14,44 @@ Policy, matching the family's hard-won rule that "detected != blocking":
     run continues, and only reports EXIT_BLOCKED if the page really was
     gated (see output_writer.EXIT_BLOCKED).
 
-No JavaScript crosses this module's boundary: it hands back a plain
-(captcha_type, sitekey, token) result. The engine — which already speaks
-its own driver's dialect (Playwright/Selenium/pyppeteer) — is the one that
-calls page.evaluate / execute_script to inject the token, because that is
-exactly the kind of per-engine primitive `page_flow.py`-style code should
-own instead of a shared module quietly picking one driver's dialect.
-**No engine in this family actually does that injection yet** for a
-locally-launched (non `--cdp-endpoint`) browser — every engine's own
-`_maybe_solve_captcha` only logs "solved", it never writes the token back
-into the page. Over `--cdp-endpoint`, this doesn't matter: 2Captcha's own
+No page-execution primitive (page.evaluate / execute_script) crosses this
+module's boundary: `build_injection_script()` below only BUILDS a plain
+JavaScript source string — driver-agnostic, since it's just text — and the
+engine (which already speaks its own driver's dialect) is the one that
+actually runs it. That split is the same one `solve_when_blocked()` uses
+for detection/solving: this module owns policy and JS-source construction,
+never the act of running JS against a real page.
+
+**Until 2026-09-21, no engine in this family actually injected a solved
+token back into a locally-launched (non `--cdp-endpoint`) browser at
+all** — every engine's own `_maybe_solve_captcha` only logged "solved", a
+real gap Roman asked about directly after GeeTest support was added
+without it. `build_injection_script()` closes that gap using each widget
+type's OWN standard, publicly-documented client-integration convention
+(a hidden `g-recaptcha-response` textarea for reCAPTCHA v2, a
+`cf-turnstile-response` field for Turnstile, and so on) — **not** anything
+confirmed against a real shein.com (or any family site's) actual widget
+markup, which has never been captured for ANY type. It is the same
+"standard convention, explicitly unconfirmed against this site" honesty
+posture `shein_parser.py`'s own DOM fallback selectors use. reCAPTCHA v3
+has no such convention — it's invisible, and the token is typically
+consumed the instant the SITE'S OWN JavaScript resolves
+`grecaptcha.execute()`'s promise (often straight into an XHR, never read
+back off a DOM element) — so `build_injection_script()` returns `None` for
+it rather than guess at site-specific code, which this shared module's own
+charter says does not belong here.
+
+Over `--cdp-endpoint`, none of this applies: 2Captcha's own
 `Captcha.setAutoSolve` CDP domain (see each engine's own
 `_enable_scraping_browser_auto_solve`) solves AND injects entirely inside
 their infrastructure, for whichever widget types their Scraping Browser
 extension recognizes (confirmed live, 2026-09-14: Turnstile, Amazon WAF,
 Yandex SmartCaptcha, Lemin — GeeTest was NOT in that confirmed list,
-though it may be covered and simply wasn't seen in that one capture). This
-module's own solve path (this file + scraper_api_client.py) is what a
-LOCAL browser run would need for a widget the CDP extension doesn't
-already cover — GeeTest support was added here 2026-09-21 for exactly that
-reason (see CaptchaType.GEETEST_V3/GEETEST_V4 below), but token injection
-for ANY type on a local browser remains a real, open gap, not something
-this GeeTest addition closes on its own.
+though it may be covered and simply wasn't seen in that one capture).
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -262,3 +275,100 @@ def solve_when_blocked(
         return {"action": "warning_no_key", "detail": str(exc)}
     except TwoCaptchaError as exc:
         return {"action": "warning_solver_error", "detail": str(exc)}
+
+
+def build_injection_script(captcha_type: CaptchaType, solution: str) -> Optional[str]:
+    """Build (never run) the JavaScript that writes a solved captcha back
+    into the page, for an engine to hand to its own page.evaluate /
+    execute_script. See the module docstring for the honesty caveat that
+    applies to every branch here: each uses that widget's own standard,
+    publicly-documented integration convention, NOT anything confirmed
+    against a real family-site capture. `solution` is `result["token"]`
+    from `solve_when_blocked()` — a plain string for
+    Turnstile/reCAPTCHA-v2/hCaptcha, a JSON-encoded solution dict for
+    GeeTest v3/v4 (see `scraper_api_client.solve_and_wait`'s docstring).
+
+    Returns `None` for reCAPTCHA v3 (see module docstring — no generic,
+    site-agnostic injection point exists for it) and for any type this
+    function doesn't recognize, rather than build JS that would silently
+    do nothing.
+    """
+    token_js = json.dumps(solution)
+
+    if captcha_type == CaptchaType.CLOUDFLARE_TURNSTILE:
+        return f"""(function() {{
+  var token = {token_js};
+  var el = document.querySelector('[name="cf-turnstile-response"]') || document.getElementById('cf-turnstile-response');
+  if (el) {{ el.value = token; el.dispatchEvent(new Event('change', {{bubbles: true}})); }}
+  var widget = document.querySelector('.cf-turnstile');
+  var cb = widget && widget.getAttribute('data-callback');
+  if (cb && typeof window[cb] === 'function') {{ window[cb](token); }}
+  return !!el || !!cb;
+}})();"""
+
+    if captcha_type == CaptchaType.RECAPTCHA_V2:
+        return f"""(function() {{
+  var token = {token_js};
+  var el = document.getElementById('g-recaptcha-response') || document.querySelector('[name="g-recaptcha-response"]');
+  if (el) {{ el.style.display = ''; el.value = token; el.dispatchEvent(new Event('change', {{bubbles: true}})); }}
+  var widget = document.querySelector('.g-recaptcha');
+  var cb = widget && widget.getAttribute('data-callback');
+  if (cb && typeof window[cb] === 'function') {{ window[cb](token); }}
+  return !!el || !!cb;
+}})();"""
+
+    if captcha_type == CaptchaType.HCAPTCHA:
+        return f"""(function() {{
+  var token = {token_js};
+  var el = document.querySelector('[name="h-captcha-response"]') || document.getElementById('h-captcha-response');
+  if (el) {{ el.value = token; el.dispatchEvent(new Event('change', {{bubbles: true}})); }}
+  var widget = document.querySelector('.h-captcha');
+  var cb = widget && widget.getAttribute('data-callback');
+  if (cb && typeof window[cb] === 'function') {{ window[cb](token); }}
+  return !!el || !!cb;
+}})();"""
+
+    if captcha_type == CaptchaType.GEETEST_V3:
+        # 2Captcha's GeeTestTask(Proxyless) response fields are named
+        # challenge/validate/seccode (confirmed against their API
+        # reference); the page-side hidden fields most public GeeTest v3
+        # integrations read are conventionally named with a "geetest_"
+        # prefix — both spellings are tried since 2Captcha's own examples
+        # are inconsistent about which one a given site expects.
+        return f"""(function() {{
+  var sol = JSON.parse({token_js});
+  var fields = {{
+    geetest_challenge: sol.challenge || sol.geetest_challenge,
+    geetest_validate: sol.validate || sol.geetest_validate,
+    geetest_seccode: sol.seccode || sol.geetest_seccode
+  }};
+  var setAny = false;
+  Object.keys(fields).forEach(function(name) {{
+    var val = fields[name];
+    if (val == null) return;
+    var el = document.getElementsByName(name)[0] || document.getElementById(name);
+    if (el) {{ el.value = val; el.dispatchEvent(new Event('change', {{bubbles: true}})); setAny = true; }}
+  }});
+  return setAny;
+}})();"""
+
+    if captcha_type == CaptchaType.GEETEST_V4:
+        # No standard hidden-field convention is publicly documented for
+        # v4 the way v3 has one — 2Captcha's own docs say to pass the
+        # solution to "the page's geetest_validate callback", without a
+        # fixed name. This is the weakest-confidence branch here: it
+        # stashes the solution where page code COULD read it, dispatches a
+        # custom event, and calls one plausible global callback name IF
+        # present — none of which is confirmed for any real site.
+        return f"""(function() {{
+  var sol = JSON.parse({token_js});
+  window.__2captcha_geetest_v4_solution = sol;
+  try {{ document.dispatchEvent(new CustomEvent('geetest_v4_solved', {{detail: sol}})); }} catch (e) {{}}
+  if (typeof window.geetest_validate_callback === 'function') {{
+    window.geetest_validate_callback(sol);
+    return true;
+  }}
+  return false;
+}})();"""
+
+    return None

@@ -9,6 +9,70 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Added — 2026-09-21 (later still, same day), captcha solution injection into the page
+- Closes the gap the GeeTest work below flagged without fixing: every
+  engine's `_maybe_solve_captcha` got a solved token/solution back from
+  2Captcha but only logged "Captcha solved..." — nothing ever wrote it
+  into the page. Prompted by a direct follow-up question after that
+  entry shipped: "ну нужно чтобы в любых случаях использование решение
+  гитест было" (roughly: the GeeTest solution needs to actually get
+  used/applied, not just obtained). Since the underlying gap was
+  identical for every widget type this repo recognizes, not just
+  GeeTest, it's closed generically for all of them.
+- `captcha_solver.build_injection_script(captcha_type, solution) ->
+  Optional[str]` builds (never runs) the JavaScript that writes a solved
+  captcha back into the page. It stays inside this shared module's
+  existing "no site knowledge" charter, reinterpreted slightly: no
+  page-execution primitive (`page.evaluate` / `execute_script`) crosses
+  the module's boundary, only JS *source text* — the engine, which
+  already speaks its own driver's dialect, is the one that actually runs
+  it. All three engines (`playwright_scraper.py` — `await
+  page.evaluate(script)`; `puppeteer_scraper.py` — same, pyppeteer's
+  async `page.evaluate`; `selenium_scraper.py` — synchronous
+  `driver.execute_script("return " + script)`, since `execute_script`
+  needs an explicit `return` to hand a value back, unlike the other two)
+  now call it from their "solved" branch, wrapped in try/except so a
+  failed injection degrades to a logged warning, never crashes the run.
+- Each widget type gets its own STANDARD, publicly-documented
+  client-integration convention — **not** anything confirmed against a
+  real shein.com (or any family-site) widget capture, which has never
+  happened for ANY type: Turnstile writes `cf-turnstile-response` (field
+  + `data-callback`); reCAPTCHA v2 writes `g-recaptcha-response` (field +
+  `data-callback`); hCaptcha writes `h-captcha-response` (field +
+  `data-callback`); GeeTest v3 writes named `geetest_challenge`/
+  `geetest_validate`/`geetest_seccode` fields, trying both prefixed and
+  unprefixed solution keys since 2Captcha's own docs are inconsistent
+  about naming; GeeTest v4 (weakest-confidence branch — no standard field
+  convention documented anywhere) stashes the solution on
+  `window.__2captcha_geetest_v4_solution`, dispatches a
+  `CustomEvent('geetest_v4_solved', ...)`, and calls
+  `window.geetest_validate_callback(...)` IF that global happens to
+  exist. reCAPTCHA v3 gets no injection script at all — it's invisible,
+  and the token is typically consumed the instant the SITE'S OWN
+  JavaScript resolves `grecaptcha.execute()`'s promise (often straight
+  into an XHR, never read back off a DOM element), so guessing at
+  site-specific consumption code would violate this module's own
+  no-site-knowledge charter; `build_injection_script()` returns `None`
+  for it on purpose, and the raw token is still returned to the caller
+  for anyone with actual site-specific knowledge to use.
+- Two new permanent `smoke_test.py` checks (52/52 total, up from 50):
+  one exercising `build_injection_script()`'s JS text/field names per
+  widget type (including the GeeTest JSON-decode path and the
+  `RECAPTCHA_V3 -> None` case), one grepping all three engine files to
+  assert they actually import and call it from their "solved" branch —
+  parity regression protection, same pattern as this file's existing
+  "all engines check the confirmed-real /risk/challenge redirect" check.
+- Discovered, not fixed, while wiring this in: `scrape_product_page()` —
+  the `--url` path pointed at a single product page, in every engine —
+  never calls `_maybe_solve_captcha` at all. Only `scrape_search()`'s
+  scroll loop attempts a captcha solve; a `/risk/challenge` redirect hit
+  while fetching a single product page is still correctly detected as
+  `blocked` (the URL check runs independently) but no 2Captcha solve is
+  ever attempted for it. See README "Known limitations".
+- Over `--cdp-endpoint`, none of this local-injection code runs — see
+  the GeeTest entry below for the CDP `Captcha.setAutoSolve` path, which
+  is unaffected by this change.
+
 ### Added — 2026-09-21 (later still), GeeTest support in captcha_solver.py
 - `captcha_solver.py` gained `CaptchaType.GEETEST_V3`/`GEETEST_V4`,
   detection patterns in `identify_widget()`, and a `_task_payload()` branch
@@ -30,14 +94,22 @@ rather than being a silent violation of that.
   Now falls back to a JSON-encoded solution dict when there's no single
   token field, with a caller-facing docstring explaining the shape
   difference.
-- Documented, not fixed (a real, pre-existing, family-wide gap, not new):
-  no engine in this family actually injects a solved token back into a
-  locally-launched (non-`--cdp-endpoint`) page — `_maybe_solve_captcha`
-  only logs "solved". This GeeTest work makes the detection/task-building
-  plumbing correct up to that point; the injection step remains open for
-  every widget type, not just GeeTest, and needs real captured widget
-  markup (still never seen, for GeeTest or any other type, on this site)
-  to implement correctly rather than guess at.
+- Documented at the time, not fixed yet in this entry (a real,
+  pre-existing, family-wide gap, not new): no engine in this family
+  actually injects a solved token back into a locally-launched
+  (non-`--cdp-endpoint`) page — `_maybe_solve_captcha` only logs
+  "solved". This GeeTest work makes the detection/task-building plumbing
+  correct up to that point; the injection step remains open for every
+  widget type, not just GeeTest, and needs real captured widget markup
+  (still never seen, for GeeTest or any other type, on this site) to
+  implement correctly rather than guess at.
+  **Closed later the same day** — see the "captcha solution injection
+  into the page" entry above (it's listed first because it's newer);
+  the "needs real captured widget markup to implement correctly" framing
+  turned out to not be a hard blocker: each widget's own standard, public
+  convention was enough to implement the injection itself, just not
+  enough to CONFIRM it against shein.com's real markup, which is still
+  unconfirmed and called out plainly in that entry.
 - `identify_widget()`'s new GeeTest patterns are explicitly marked
   UNCONFIRMED (built from GeeTest's own public integration docs, not a
   shein.com capture) — this incident's actual challenge widget was never

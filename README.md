@@ -281,21 +281,51 @@ since these are properties of the drivers, not the site):
   extra markers are load-bearing, not corroboration.
 - **`captcha_solver.py` can now build a 2Captcha task for GeeTest** (added
   2026-09-21 — `CaptchaType.GEETEST_V3`/`GEETEST_V4`), since shein.com's
-  gateway is suspected (not confirmed — see above) to use it. Two real gaps
-  remain even so: (1) the widget-detection patterns in `identify_widget()`
-  are UNCONFIRMED best-effort from GeeTest's own public docs, not a real
+  gateway is suspected (not confirmed — see above) to use it. One real gap
+  remains: the widget-detection patterns in `identify_widget()` are
+  UNCONFIRMED best-effort from GeeTest's own public docs, not a real
   shein.com capture — this incident's actual challenge widget was never
-  reached, only the redirect page — and (2) **captcha token injection on a
-  locally-launched browser is not implemented for ANY widget type in this
-  family**, GeeTest included — `_maybe_solve_captcha` gets a solved
-  token/solution back from 2Captcha but no engine writes it into the page.
-  Over `--cdp-endpoint` (the Scraping Browser API), (2) doesn't matter —
-  2Captcha's own `Captcha.setAutoSolve` CDP domain solves AND injects
-  entirely inside their infrastructure — but that extension's own
-  confirmed widget coverage (live, 2026-09-14: Turnstile, Amazon WAF,
-  Yandex SmartCaptcha, Lemin) did not include GeeTest in the one capture
-  that confirmed it, so whether a real GeeTest challenge on shein.com gets
-  auto-solved over CDP is itself unconfirmed, not just the local path.
+  reached, only the redirect page.
+- **Captcha token injection on a locally-launched browser is now
+  implemented for every widget type this repo recognizes** (added
+  2026-09-21, later the same day — `captcha_solver.build_injection_script()`
+  plus all three engines' `_maybe_solve_captcha` calling it from their
+  "solved" branch), closing a real gap the GeeTest work above had
+  surfaced without closing: previously every engine got a solved
+  token/solution back from 2Captcha but only logged it, never wrote it
+  into the page. Read the caveat carefully before trusting this against a
+  real run: each widget's injection uses that widget's own STANDARD,
+  publicly-documented client-integration convention (a hidden
+  `g-recaptcha-response` textarea for reCAPTCHA v2, a
+  `cf-turnstile-response` field for Turnstile, named `geetest_challenge`/
+  `geetest_validate`/`geetest_seccode` fields for GeeTest v3, and so on —
+  see `captcha_solver.build_injection_script`'s own docstring for the
+  full list) — **not** anything confirmed against a real shein.com widget
+  capture, which has never happened for ANY type on this site. reCAPTCHA
+  v3 has no such convention at all (it's invisible; the token is
+  typically consumed the instant the site's own JS resolves
+  `grecaptcha.execute()`, often straight into an XHR, never read back off
+  a DOM element) so `build_injection_script()` deliberately returns
+  `None` for it rather than guess at site-specific consumption code,
+  which this shared module's own no-site-knowledge charter says doesn't
+  belong here — a caller still gets the raw token back in that case, for
+  a caller with actual site-specific knowledge to use. A failed injection
+  degrades to a logged warning, never a crash.
+  Over `--cdp-endpoint` (the Scraping Browser API), none of this local
+  injection code runs at all — 2Captcha's own `Captcha.setAutoSolve` CDP
+  domain solves AND injects entirely inside their infrastructure — but
+  that extension's own confirmed widget coverage (live, 2026-09-14:
+  Turnstile, Amazon WAF, Yandex SmartCaptcha, Lemin) did not include
+  GeeTest in the one capture that confirmed it, so whether a real GeeTest
+  challenge on shein.com gets auto-solved over CDP is itself unconfirmed,
+  not just the local path.
+- **`scrape_product_page()` (the `--url` path pointed at a single product
+  page, in every engine) never attempts captcha solving at all** —
+  discovered while wiring the injection work above, not yet fixed. Only
+  `scrape_search()`'s scroll loop calls `_maybe_solve_captcha`; a
+  `/risk/challenge` redirect hit while fetching a single product page is
+  detected as `blocked` (the URL check still runs) but no 2Captcha solve
+  is ever attempted for it.
 - **No engine here has been run live against the real site yet** — the
   research above comes from a browser-rendering tool driving real pages,
   not this repo's own `playwright_scraper.py`/etc. (see `TESTING.md`).

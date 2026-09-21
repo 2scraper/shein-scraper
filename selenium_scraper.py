@@ -51,7 +51,7 @@ else:
 
 import env_config
 import shein_parser as sp
-from captcha_solver import detect_from_html, solve_when_blocked
+from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
 from output_writer import EXIT_BAD_USAGE, EXIT_CRASH, Product, finish_run, sku_key as _sku_key
 from proxy_pool import Proxy, ProxyPool, ProxyParseError, is_proxy_dead_error, load_proxies
 from fingerprint_client import fetch_fingerprint, refuse_if_cdp, user_agent_from
@@ -181,7 +181,10 @@ _STATUS_JS = (
 _GB_RAW_DATA_JS = "try { return window.gbRawData || null; } catch (e) { return null; }"
 
 
-def _maybe_solve_captcha(*, html: str, url: str, client: Optional[TwoCaptchaClient], policy: str, min_score: float = 0.3) -> Optional[dict]:
+def _maybe_solve_captcha(
+    *, html: str, url: str, client: Optional[TwoCaptchaClient], policy: str, min_score: float = 0.3,
+    driver=None,
+) -> Optional[dict]:
     if policy == "off" or client is None:
         return None
     result = solve_when_blocked(
@@ -194,12 +197,30 @@ def _maybe_solve_captcha(*, html: str, url: str, client: Optional[TwoCaptchaClie
     elif action == "warning_solver_error":
         log.warning("Captcha solve failed: %s", result.get("detail"))
     elif action == "solved":
-        log.warning(
-            "Captcha token obtained but NOT auto-injected on the Selenium "
-            "engine (unverified widget-specific step) — use "
-            "playwright_scraper.py or puppeteer_scraper.py with "
-            "--cdp-endpoint for the Scraping Browser API's built-in solve."
-        )
+        log.info("Captcha solved via 2Captcha (%s).", result.get("captcha_type"))
+        # See captcha_solver.build_injection_script's docstring for the
+        # honesty caveat: this uses each widget's own STANDARD, publicly
+        # documented convention, never anything confirmed against a real
+        # shein.com capture.
+        if driver is not None:
+            script = build_injection_script(CaptchaType(result["captcha_type"]), result["token"])
+            if script is None:
+                log.info(
+                    "No generic injection point for %s — token was solved but not written into "
+                    "the page (this is expected for reCAPTCHA v3; see captcha_solver.py).",
+                    result.get("captcha_type"),
+                )
+            else:
+                try:
+                    injected = driver.execute_script(f"return {script}")
+                    log.info(
+                        "Injected solved %s into the page (found a target element/callback: %s) "
+                        "— unconfirmed whether shein.com's real widget actually reads this "
+                        "standard-convention field/callback.",
+                        result.get("captcha_type"), bool(injected),
+                    )
+                except WebDriverException as exc:
+                    log.warning("Captcha solved but injecting it into the page failed: %s", exc)
     elif action == "detected_unidentified_widget":
         log.warning(
             "A bot-mitigation marker was detected but no known widget/sitekey could be extracted "
@@ -287,7 +308,7 @@ def scrape_search(
         cards_present = sp.count_result_cards(html) > 0
         if captcha_detected and not cards_present:
             blocked = True
-        captcha_result = _maybe_solve_captcha(html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score)
+        captcha_result = _maybe_solve_captcha(html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score, driver=driver)
         if captcha_result and captcha_result.get("action") in ("warning_no_key", "warning_solver_error", "detected_unidentified_widget"):
             if sp.count_result_cards(html) == 0:
                 blocked = True
