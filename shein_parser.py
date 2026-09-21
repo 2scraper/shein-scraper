@@ -184,6 +184,26 @@ not guessed:
     UNCONFIRMED — worth testing next: does the SAME freshly-launched
     context succeed on a SECOND request (cookies now set from the
     first), or does every fresh launch hit this regardless of history?
+  - **RESOLVED minutes later, same day**: Roman re-ran with the new
+    diagnostic logging in place, and the final URL gave a direct answer —
+    `https://us.shein.com/risk/action/limit?risk-id=<id>`. A THIRD real
+    incident under SHEIN's own `/risk/` gateway family, distinct from
+    `/risk/challenge`: the path name and the complete absence of any
+    captcha-shaped content on it both point at a plain RATE LIMIT, not a
+    challenge — nothing for `identify_widget()` to find, because there is
+    nothing there to solve. This was a much simpler explanation than the
+    "landing-page swap" theory above: not a cookie-jar-dependent content
+    swap, just this repo's own testing (several rapid CLI runs, plus an
+    earlier research session's many rapid browser-tool navigations to the
+    same site) plausibly tripping an ordinary rate limiter on whatever
+    network path was in use. `BOT_CHALLENGE_MARKERS` and the new
+    `RISK_GATEWAY_URL_MARKERS` tuple below now cover `/risk/action/limit`
+    alongside `/risk/challenge`, so this correctly reports as `blocked`
+    (exit 3) instead of silently `empty` (exit 4) going forward.
+    `diagnose_unexpected_page()` stays in place regardless — it's what
+    surfaced the final URL that made this diagnosable at all, and it
+    remains useful for whatever OTHER "zero products, not blocked" case
+    shows up next that isn't covered by a known marker yet.
   - **Still UNCONFIRMED**: whether scrolling a `/pdsearch/` page past its
     first SSR-embedded batch (confirmed 20 products per initial
     `gbRawData` snapshot, out of e.g. 17,059 total matches for one real
@@ -248,20 +268,54 @@ MIN_CARD_MATCHES = 2  # per family invariant (CLAUDE.md §5): a single unrelated
                        # link/card must not read as "results rendered" — mirrors
                        # lidl-scraper's / stockx-scraper's own MIN_CARD_MATCHES.
 
-# REAL, live-captured incident (2026-09-21 — see module docstring):
+# REAL, live-captured incidents (2026-09-21 — see module docstring):
 # SHEIN's own risk gateway, not a third-party vendor's domain, so the
 # useful markers are SHEIN's own path/query shape, not a vendor string.
 # `captcha_solver.GENERIC_BOT_CHALLENGE_MARKERS` does NOT contain anything
-# that would catch this on its own (no "geetest" string in that generic
-# list, and this repo's own page content after the redirect is a normal-
-# looking SHEIN shell page, not a page full of vendor-identifiable
-# widget markup) — so unlike every prior family incident, these markers
-# are NOT corroboration of the generic detector, they are the ONLY
-# detection path for this specific incident. `detect_from_html()` still
-# runs first per the shared contract; these are passed as `extra_markers`.
+# that would catch either of these on its own (no "geetest" string in
+# that generic list, and this repo's own page content after either
+# redirect is a normal-looking SHEIN shell page, not a page full of
+# vendor-identifiable widget markup) — so unlike every prior family
+# incident, these markers are NOT corroboration of the generic detector,
+# they are the ONLY detection path for these specific incidents.
+# `detect_from_html()` still runs first per the shared contract; these
+# are passed as `extra_markers`.
+#
+# TWO distinct real endpoints under SHEIN's own /risk/ gateway family,
+# confirmed live on two separate occasions:
+#   - `/risk/challenge?captcha_type=909&...` — a CAPTCHA-shaped wall
+#     (suspected GeeTest, never confirmed — see module docstring). First
+#     captured via a browser-rendering tool, 2026-09-21.
+#   - `/risk/action/limit?risk-id=...` — confirmed live 2026-09-21,
+#     later the same day, via `playwright_scraper.py` ITSELF (Roman's own
+#     first live engine run, not a browser-rendering tool this time — see
+#     module docstring, "First real engine run" section). The path name
+#     ("action/limit") and the complete absence of any captcha-shaped
+#     content on the redirect target both point at a RATE-LIMIT gate, not
+#     a challenge to solve — `identify_widget()` correctly finds nothing
+#     on it (there is nothing to find), and `solve_when_blocked()`
+#     correctly reports `detected_unidentified_widget` rather than
+#     pretending a 2Captcha task could ever clear this. `risk-id=` is
+#     shared across BOTH endpoints (present on the original
+#     `/risk/challenge` capture too — a generic tracking id for the whole
+#     risk-gateway family), so it is deliberately NOT used as a marker on
+#     its own; the distinct path segments are.
 BOT_CHALLENGE_MARKERS: tuple = (
     "/risk/challenge",
     "captcha_type=909",
+    "/risk/action/limit",
+)
+
+# Just the URL-path markers, for an engine's cheap page.url/current_url
+# check (see e.g. playwright_scraper.py's own comment on why the final
+# URL is the most direct signal for these specific incidents, cheaper
+# than scanning page content). Kept separate from BOT_CHALLENGE_MARKERS
+# above (which also carries the query-param marker `captcha_type=909`,
+# not a URL-path fragment) so an engine doesn't have to know which
+# entries in that tuple are path-shaped and which aren't.
+RISK_GATEWAY_URL_MARKERS: tuple = (
+    "/risk/challenge",
+    "/risk/action/limit",
 )
 
 # Confirmed real from robots.txt: never requested even for a human-

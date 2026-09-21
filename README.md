@@ -381,10 +381,23 @@ since these are properties of the drivers, not the site):
   `<title>` and whether search-page markers are present) plus the final
   URL, and — a real parity gap this exposed — Selenium and Puppeteer had
   NO such warning at all before (only Playwright did); all three do now.
-  The actual mechanism (a consent/locale gate? a landing-page swap for a
-  "new visitor"? something else?) is still UNCONFIRMED — next test worth
-  running: does a SECOND request from the same freshly-launched context
-  succeed once cookies are set, or does every fresh launch hit this?
+  **Resolved minutes later**: a re-run with the new diagnostic logging
+  gave the actual final URL — `https://us.shein.com/risk/action/limit?
+  risk-id=...` — a THIRD real incident under SHEIN's own `/risk/` gateway
+  family, and a much simpler explanation than the cookie-jar theory
+  above: the path name and the complete absence of any captcha-shaped
+  content on it point at a plain RATE LIMIT, most plausibly tripped by
+  this repo's own recent testing (several rapid CLI runs, plus an
+  earlier research session's many rapid browser-tool navigations) rather
+  than anything cookie-related. `BOT_CHALLENGE_MARKERS` and a new
+  `RISK_GATEWAY_URL_MARKERS` tuple now cover `/risk/action/limit`
+  alongside `/risk/challenge` in every engine's URL check, so this
+  reports as `blocked` (exit 3) going forward instead of silently
+  `empty` (exit 4). `diagnose_unexpected_page()` stays in place — it's
+  what surfaced the URL that made this diagnosable, and it's still
+  useful for whatever next "zero products, not blocked" case isn't
+  covered by a known marker yet. See `shein_parser.py`'s module
+  docstring for the full write-up.
 - **Scroll-driven pagination growth is unconfirmed** — see "Pagination"
   above.
 - **DOM fallback selectors are unverified guesses** (`# TODO: verify live`

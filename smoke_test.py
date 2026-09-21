@@ -361,7 +361,13 @@ def _():
     # than in a sibling repo's equivalent.
     real_block_fixture = (ROOT / "tests" / "fixtures" / "shein_risk_challenge_real.html").read_text(encoding="utf-8")
     assert sp.BOT_CHALLENGE_MARKERS, "the real incident below should have left at least one marker"
-    for marker in sp.BOT_CHALLENGE_MARKERS:
+    # BOT_CHALLENGE_MARKERS now covers TWO distinct real incidents (see
+    # shein_parser.py's module docstring) — this fixture is only the
+    # /risk/challenge one, so only ITS markers are asserted against it;
+    # the /risk/action/limit marker gets its own check below.
+    risk_challenge_markers = ("/risk/challenge", "captcha_type=909")
+    for marker in risk_challenge_markers:
+        assert marker in sp.BOT_CHALLENGE_MARKERS, f"{marker!r} unexpectedly dropped from BOT_CHALLENGE_MARKERS"
         assert marker.lower() in real_block_fixture.lower(), f"{marker!r} does not match the actual captured incident"
     assert captcha_solver.detect_from_html(real_block_fixture, sp.BOT_CHALLENGE_MARKERS), (
         "detect_from_html must flag the real captured risk/challenge page as a block, with extra_markers passed"
@@ -370,6 +376,56 @@ def _():
         "confirms the GENERIC markers alone do NOT catch this incident — extra_markers is load-bearing here, "
         "not just corroboration, unlike every prior family incident"
     )
+
+
+@check("BOT_CHALLENGE_MARKERS/RISK_GATEWAY_URL_MARKERS also cover /risk/action/limit — the rate-limit incident found on Roman's own first live engine run (added 2026-09-21)")
+def _():
+    # Real URL from a live playwright_scraper.py run, not a browser-
+    # rendering tool this time: https://us.shein.com/risk/action/limit
+    # ?risk-id=E4913845744991097345 — see shein_parser.py's module
+    # docstring, "RESOLVED minutes later" section, for the full incident.
+    # No real scrubbed HTML capture is committed here (unlike the
+    # /risk/challenge fixture) — the actual page carries third-party
+    # tracker/analytics noise not worth preserving just to prove a path
+    # marker matches; the marker itself is the load-bearing thing.
+    assert "/risk/action/limit" in sp.BOT_CHALLENGE_MARKERS
+    assert "/risk/action/limit" in sp.RISK_GATEWAY_URL_MARKERS
+    assert "/risk/challenge" in sp.RISK_GATEWAY_URL_MARKERS
+
+    real_rate_limit_url = "https://us.shein.com/risk/action/limit?risk-id=E4913845744991097345"
+    assert any(marker in real_rate_limit_url for marker in sp.RISK_GATEWAY_URL_MARKERS), (
+        "an engine's page.url/current_url check must flag the real rate-limit redirect as blocked"
+    )
+    # risk-id= alone must NOT be a marker (see the module-docstring note on
+    # why) — it's shared across both incidents, so using it standalone
+    # would be a false-positive risk on any URL from either gateway with
+    # a DIFFERENT, as-yet-unseen path.
+    assert not any(m == "risk-id=" for m in sp.BOT_CHALLENGE_MARKERS)
+
+    synthetic_rate_limit_html = (
+        "<!DOCTYPE html><html><head><title></title></head>"
+        "<body>window.location = 'https://us.shein.com/risk/action/limit?risk-id=abc123'</body></html>"
+    )
+    assert captcha_solver.detect_from_html(synthetic_rate_limit_html, sp.BOT_CHALLENGE_MARKERS)
+    assert not captcha_solver.detect_from_html(synthetic_rate_limit_html), (
+        "confirms the GENERIC markers alone do not catch this one either, same as /risk/challenge"
+    )
+    assert captcha_solver.identify_widget(synthetic_rate_limit_html) is None, (
+        "there is nothing to solve on a rate-limit page — identify_widget finding nothing is correct, "
+        "not a gap, and solve_when_blocked's 'detected_unidentified_widget' branch is what an engine "
+        "sees for it"
+    )
+
+
+@check("all three engines' page.url/current_url block-check uses RISK_GATEWAY_URL_MARKERS, not a hardcoded single incident (parity gap this would silently reopen if one engine reverted)")
+def _():
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert "RISK_GATEWAY_URL_MARKERS" in src, f"{path} lost the shared risk-gateway URL check"
+        assert 'if "/risk/challenge" in' not in src, (
+            f"{path} has a stale hardcoded /risk/challenge-only URL check that bypasses "
+            f"RISK_GATEWAY_URL_MARKERS — /risk/action/limit would silently stop being caught"
+        )
 
 
 @check("captcha_solver.identify_widget extracts a Turnstile sitekey")

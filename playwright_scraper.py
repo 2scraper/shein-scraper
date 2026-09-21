@@ -220,9 +220,11 @@ async def _maybe_solve_captcha(
     elif action == "detected_unidentified_widget":
         log.warning(
             "A bot-mitigation marker was detected but no known widget/sitekey could be extracted "
-            "— SHEIN's own /risk/challenge gateway is a real, confirmed incident with no known "
-            "2Captcha automated solve path yet (see shein_parser.py's module docstring); this is "
-            "expected for THAT case, not necessarily a bug."
+            "— SHEIN's own risk-gateway family (/risk/challenge, /risk/action/limit) has two "
+            "confirmed real incidents with no known 2Captcha automated solve path: the "
+            "captcha-shaped /risk/challenge, and /risk/action/limit, which looks like a plain "
+            "rate limit with nothing to solve at all (see shein_parser.py's module docstring); "
+            "this is expected for either case, not necessarily a bug."
         )
     return result
 
@@ -287,15 +289,18 @@ async def scrape_search(
         log.error("Search page permanently failed to load: %s", last_error)
         return [], False, True, 0, False
 
-    # REAL, confirmed-live incident (see shein_parser.py's module
-    # docstring): SHEIN's own /risk/challenge gateway silently redirects
-    # a request it doesn't like, rather than returning a >=400 status —
-    # the final page.url is the single most reliable signal for it,
-    # cheaper and more direct than scanning HTML content (though
-    # sp.BOT_CHALLENGE_MARKERS below also matches, since the redirect
-    # target is embedded as text in the page's own SSR JSON state).
-    if "/risk/challenge" in page.url:
-        log.warning("Redirected to SHEIN's own risk/challenge gateway (%s) — treating as blocked.", page.url)
+    # REAL, confirmed-live incidents (see shein_parser.py's module
+    # docstring — TWO distinct endpoints now, a captcha-shaped
+    # `/risk/challenge` and a rate-limit `/risk/action/limit`, the
+    # latter confirmed via this exact engine, not a browser-rendering
+    # tool): both silently redirect a request they don't like, rather
+    # than returning a >=400 status — the final page.url is the single
+    # most reliable signal for either, cheaper and more direct than
+    # scanning HTML content (though sp.BOT_CHALLENGE_MARKERS below also
+    # matches, since the redirect target is embedded as text in the
+    # page's own SSR JSON state).
+    if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
+        log.warning("Redirected to SHEIN's own risk gateway (%s) — treating as blocked.", page.url)
         blocked = True
         if proxy_pool is not None and proxy is not None:
             proxy_pool.report_failure(proxy, dead=False)
@@ -441,7 +446,7 @@ async def scrape_product_page(
         await context.close()
         return [], False, True, 0, False
 
-    if "/risk/challenge" in page.url:
+    if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         blocked = True
     if status is not None and status >= 400:
         blocked = True

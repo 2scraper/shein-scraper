@@ -9,6 +9,58 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Fixed — 2026-09-21 (later still, same day), a THIRD real bot-mitigation incident (`/risk/action/limit`) that silently reported as "empty" instead of "blocked"
+- Direct follow-up to the diagnostic-logging fix just below: Roman re-ran
+  the exact same command with the new logging in place, and the final
+  URL gave a real answer — `https://us.shein.com/risk/action/limit?
+  risk-id=E4913845744991097345`. A distinct real endpoint under SHEIN's
+  own `/risk/` gateway family, different from the previously-documented
+  `/risk/challenge`: the path name ("action/limit") and the complete
+  absence of any captcha-shaped content on the redirect target both point
+  at a plain RATE LIMIT, not a challenge — nothing for
+  `captcha_solver.identify_widget()` to find, because there's nothing
+  there to solve. A much simpler explanation than the "cookie-jar
+  content swap" theory the previous entry left open: most plausibly this
+  repo's own recent testing (several rapid CLI runs from Roman, plus an
+  earlier research session's many rapid browser-tool navigations to the
+  same site) tripped an ordinary rate limiter.
+- **The real bug this exposed**: none of `BOT_CHALLENGE_MARKERS` or any
+  engine's URL check knew about `/risk/action/limit` at all, so a run
+  that hit it silently reported `empty` (exit 4) — wrong data about why
+  zero products were found — instead of `blocked` (exit 3). `risk-id=`
+  is shared across BOTH `/risk/` endpoints (confirmed present on the
+  original `/risk/challenge` capture too), so it's deliberately NOT used
+  as a marker by itself; the distinct path segments are.
+- **Fixed**: `BOT_CHALLENGE_MARKERS` gained `/risk/action/limit`; a new
+  `shein_parser.RISK_GATEWAY_URL_MARKERS = ("/risk/challenge",
+  "/risk/action/limit")` tuple replaces every engine's old hardcoded
+  `if "/risk/challenge" in page.url` check (six call sites across the
+  three engines — two per engine, `scrape_search()` and
+  `scrape_product_page()`) with `any(marker in page.url for marker in
+  sp.RISK_GATEWAY_URL_MARKERS)`, so a future third incident only needs
+  one tuple updated, not six call sites found by hand. The
+  `detected_unidentified_widget` log message in all three engines is
+  reworded to name both incidents instead of assuming `/risk/challenge`
+  specifically.
+- Three new `smoke_test.py` checks (57/57 total, up from 55): the
+  existing "real captured incident" check is scoped to only the
+  `/risk/challenge`-specific markers it can actually verify against that
+  fixture (it would have broken the moment `/risk/action/limit` was
+  added to the same tuple, since that marker doesn't appear in the
+  `/risk/challenge` fixture); a new check for the rate-limit markers
+  against the real URL plus a synthetic reproduction (no scrubbed real
+  HTML capture committed for this one — the actual page carries
+  third-party tracker noise not worth preserving just to prove a path
+  marker matches); and a parity grep confirming all three engines use
+  the shared tuple rather than a hardcoded single-incident string.
+- No behavior change beyond correct classification — a rate-limited run
+  still just fails (correctly, as `blocked` now); no automatic backoff or
+  differentiated retry logic was added for this, since the real
+  underlying trigger (this repo's own recent request volume, most
+  likely) isn't something a code change here can fix, and guessing at
+  retry tuning without confirming the actual mechanism would just be
+  another unconfirmed guess layered on top of this one.
+
 ### Fixed — 2026-09-21 (later still, same day), a silent zero-products diagnostic gap found on Roman's own first live engine run
 - Roman ran `playwright_scraper.py --query "summer dress" --max-results 10`
   himself for the first time — this repo's own execution environments had
