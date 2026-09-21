@@ -9,6 +9,51 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Fixed — 2026-09-21 (later still, same day), a silent zero-products diagnostic gap found on Roman's own first live engine run
+- Roman ran `playwright_scraper.py --query "summer dress" --max-results 10`
+  himself for the first time — this repo's own execution environments had
+  been network-blocked from a live run until now (see `TESTING.md`). It
+  returned exit `4` ("empty") with only a generic warning. A re-run with
+  `--dump-html` and a side-by-side check via the built-in browser tool
+  (which already had shein.com cookies from earlier, unrelated browsing
+  in the same profile) found a real, new failure shape: the exact
+  confirmed-correct URL (`https://us.shein.com/pdsearch/summer%20dress/`)
+  returned a completely normal 20-product page through the cookied
+  session, but a freshly-launched, cookie-less Playwright context got a
+  page with an EMPTY `<title>` and zero `bffProductsInfo`/`pdsearch`
+  markers anywhere in ~1.58MB of HTML — no `/risk/challenge`, no `>=400`
+  status, nothing `BOT_CHALLENGE_MARKERS`/`GENERIC_BOT_CHALLENGE_MARKERS`
+  catches. Consistent with (not proven to be) shein.com serving a
+  different page — its own landing/marketing SSR variant — for a request
+  from a bare cookie jar. This correctly does NOT get reported as
+  `blocked`, since there is no bot-mitigation signal at all — but the old
+  generic warning gave no way to tell that apart from "this query
+  genuinely has zero results" without a manual `--dump-html` + grep
+  session.
+- **Fixed**: `shein_parser.diagnose_unexpected_page(html)` — a small,
+  non-classifying diagnostic (the page's actual `<title>`, whether either
+  marker a real search page always has is present, byte length) — is now
+  logged, along with the final URL, in every engine's "zero products,
+  page not flagged as blocked" warning.
+- **Also fixed, a real parity gap this exposed**: only
+  `playwright_scraper.py` had this warning at all before — Selenium and
+  Puppeteer silently said nothing in the identical situation. All three
+  log it now, worded identically.
+- Two new `smoke_test.py` checks (55/55 total, up from 53): one exercising
+  `diagnose_unexpected_page()`'s title/marker extraction against a
+  reduced synthetic reproduction of the real shape found (not a scrub of
+  the actual capture, which carries third-party tracker noise not worth
+  committing), one grepping all three engines for parity.
+- **Still UNCONFIRMED, and now the highest-value next live test**: what
+  actually causes this — a consent/locale gate on a bare cookie jar? A
+  "new visitor" landing-page swap independent of the requested path?
+  Something else? Worth checking directly: does a SECOND request from the
+  SAME freshly-launched browser context (cookies now set from the first)
+  succeed, or does every fresh launch hit this regardless of request
+  history? See `shein_parser.py`'s module docstring, "First real engine
+  run" section, for the full write-up and README "Known limitations" for
+  the user-facing version.
+
 ### Fixed — 2026-09-21 (later still, same day), a real reCAPTCHA v2 detection gap; documented a new undetermined risk-fingerprint layer
 - Prompted directly by Roman asking "точно ли гитест там? может еще какие
   то капчи есть?" (is it really GeeTest there? maybe there are other

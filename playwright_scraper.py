@@ -329,11 +329,19 @@ async def scrape_search(
 
         result = sp.safe_parse_search_results(html, max_results=args.max_results, raw_data=raw_data)
         if result.source_used == "none" and round_num == 0 and not blocked:
+            # See shein_parser.diagnose_unexpected_page's own docstring — a
+            # real, live 2026-09-21 case (Roman's own first engine run) hit
+            # exactly this with a page that wasn't blocked, wasn't a parse
+            # bug, but genuinely wasn't a search-results page at all.
             log.warning(
-                "No products recognised on the first render — either this search "
-                "genuinely has no results, or shein_parser.py's window.gbRawData "
-                "path needs updating for the current shein.com markup (see its "
-                "module docstring). Re-run with --dump-html to inspect the captured page."
+                "No products recognised on the first render (%s, final URL: %s) — either "
+                "this search genuinely has no results, shein_parser.py's window.gbRawData "
+                "path needs updating for the current shein.com markup, or shein.com served "
+                "a DIFFERENT page than search results for this request (a real, not just "
+                "hypothetical, case — see shein_parser.py's module docstring, "
+                "'First real engine run' section). Re-run with --dump-html to inspect the "
+                "captured page.",
+                sp.diagnose_unexpected_page(html), page.url,
             )
 
         round_skus = {_sku_key(p) for p in result.products}

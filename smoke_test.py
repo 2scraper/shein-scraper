@@ -610,6 +610,39 @@ def _():
         pass
 
 
+@check("diagnose_unexpected_page (added 2026-09-21, prompted by Roman's own first live engine run) distinguishes a real search page from a page that clearly isn't one")
+def _():
+    # The real shape found live: a fresh, cookie-less Playwright context's
+    # first request to a confirmed-correct /pdsearch/ URL got a page with
+    # an EMPTY <title> and no bffProductsInfo/pdsearch marker anywhere —
+    # not a /risk/challenge redirect, not a >=400 status, just... a
+    # different page. This is a reduced, clearly-synthetic reproduction of
+    # that real shape's DIAGNOSTIC SURFACE (title + marker presence), not
+    # a scrub of the actual ~1.58MB capture (which carries third-party
+    # tracker noise not worth committing here) — see
+    # shein_parser.diagnose_unexpected_page's own docstring for the real
+    # incident this documents.
+    not_a_search_page = "<!DOCTYPE html><html><head><title></title></head><body>some other shein.com page, no search markers here</body></html>"
+    diag = sp.diagnose_unexpected_page(not_a_search_page)
+    assert "title=''" in diag
+    assert "search-page-markers-present=False" in diag
+
+    real_search_page = '<html><head><title>Search summer dress | SHEIN USA</title></head><body><script>window.gbRawData={"results":{"bffProductsInfo":{"products":[]}}}</script></body></html>'
+    diag2 = sp.diagnose_unexpected_page(real_search_page)
+    assert "Search summer dress" in diag2
+    assert "search-page-markers-present=True" in diag2
+
+
+@check("all three engines log a diagnostic (not silence) when zero products are found but the page wasn't flagged as blocked — parity gap Roman's live run exposed (Playwright had this, Selenium/Puppeteer didn't)")
+def _():
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert "diagnose_unexpected_page" in src, f"{path} doesn't call the new diagnostic — silent zero-products gap regressed"
+        assert 'result.source_used == "none" and round_num == 0 and not blocked' in src, (
+            f"{path} is missing (or changed) the trigger condition for the diagnostic"
+        )
+
+
 @check("product_url builds the confirmed-real {slug}-p-{goods_id}.html shape")
 def _():
     url = sp.product_url("dsbayvkj", "33704388")

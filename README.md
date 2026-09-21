@@ -359,15 +359,32 @@ since these are properties of the drivers, not the site):
   `/risk/challenge` redirect hit while fetching a single product page is
   detected as `blocked` (the URL check still runs) but no 2Captcha solve
   is ever attempted for it.
-- **No engine here has been run live against the real site yet** — the
-  research above comes from a browser-rendering tool driving real pages,
-  not this repo's own `playwright_scraper.py`/etc. (see `TESTING.md`).
-  `shein_parser.parse_search_results()` itself HAS been confirmed against a
-  second real live capture (10/10 products, clean `finish_run()`, see
-  `CHANGELOG.md`) — what's still open is the engine scripts' own browser
-  automation (launch, scroll loop, retries) end to end, currently blocked
-  by a network-egress policy in this repo's available execution
-  environments, not a code gap (see `TESTING.md`).
+- **`playwright_scraper.py` HAS now been run live against the real site**
+  (Roman's own machine, 2026-09-21, not blocked by this repo's own
+  execution environments the way earlier attempts were — see
+  `TESTING.md`) — and it immediately found a real, new failure shape:
+  `--query "summer dress"` returned exit `4` ("empty") on a
+  freshly-launched, cookie-less browser context, even though the exact
+  same URL returned a completely normal 20-product page seconds later
+  through a browser session that already had shein.com cookies. Not
+  `/risk/challenge`, not a `>=400` status, not a parsing bug —
+  `--dump-html`'s capture had an empty `<title>` and zero
+  `bffProductsInfo`/`pdsearch` markers anywhere in ~1.58MB, consistent
+  with (not proven to be) shein.com serving a different page entirely for
+  a request from a bare cookie jar. See `shein_parser.py`'s module
+  docstring, "First real engine run" section, for the full write-up. This
+  correctly does NOT get reported as `blocked` (there's no bot-mitigation
+  marker at all — calling it that would misrepresent what happened), but
+  it also wasn't diagnosable from the log alone before this: every
+  engine's "zero products, not blocked" warning now logs
+  `shein_parser.diagnose_unexpected_page()`'s output (the page's real
+  `<title>` and whether search-page markers are present) plus the final
+  URL, and — a real parity gap this exposed — Selenium and Puppeteer had
+  NO such warning at all before (only Playwright did); all three do now.
+  The actual mechanism (a consent/locale gate? a landing-page swap for a
+  "new visitor"? something else?) is still UNCONFIRMED — next test worth
+  running: does a SECOND request from the same freshly-launched context
+  succeed once cookies are set, or does every fresh launch hit this?
 - **Scroll-driven pagination growth is unconfirmed** — see "Pagination"
   above.
 - **DOM fallback selectors are unverified guesses** (`# TODO: verify live`

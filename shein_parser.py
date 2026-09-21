@@ -150,6 +150,40 @@ not guessed:
     OTHER vendor (reCAPTCHA v2) that turned out to be concretely
     confirmed. See README "Known limitations" for the user-facing version
     of this.
+  - **First real engine run, 2026-09-21 (Roman's own test), found a
+    NEW failure shape this repo hadn't seen before — not blocked, not a
+    parsing bug, but shein.com apparently serving a different page
+    entirely**: a freshly-launched, cookie-less Playwright context's
+    first request to the confirmed-correct
+    `https://us.shein.com/pdsearch/summer%20dress/` came back exit 4
+    ("empty") — `window.gbRawData` was `undefined` (the live JS read, not
+    a text-parsing miss) and `--dump-html`'s capture had an EMPTY
+    `<title>`, zero occurrences of `bffProductsInfo`/`pdsearch` anywhere
+    in ~1.58MB of HTML, and what reads as generic client-side analytics
+    boilerplate (`resource === 'ssr-landing-page'`,
+    `pageFrom = isMarketing ? 'Marketing' : 'Home'`) — consistent with,
+    but not proof of, shein.com rendering its own landing/marketing SSR
+    variant instead of search results for this specific request. The
+    SAME exact URL, requested through the built-in browser tool's
+    session (which already carried shein.com cookies from unrelated
+    earlier browsing in the same profile), returned a completely normal
+    page seconds later: title "Search summer dress | SHEIN USA", 20
+    products in `window.gbRawData`. No `/risk/challenge` redirect, no
+    `>=400` status, no `captcha_type=909`, no `BOT_CHALLENGE_MARKERS` hit
+    at all — this is NOT the bot-mitigation incident documented above,
+    it is something else, and it correctly does NOT get treated as
+    `blocked` by any current detector (misclassifying it as a captcha
+    problem would be worse than an honest "empty"). The one real,
+    non-speculative fix shipped for this: every engine's "zero products,
+    not blocked" warning now logs `shein_parser.diagnose_unexpected_page()`
+    — the page's actual `<title>` and whether either marker a real
+    search page always has is present — plus the final URL, so the next
+    occurrence doesn't need a `--dump-html` + manual grep session to
+    diagnose. The MECHANISM (a consent/locale gate? a "new visitor"
+    landing-page swap? something else tied to a bare cookie jar?) is
+    UNCONFIRMED — worth testing next: does the SAME freshly-launched
+    context succeed on a SECOND request (cookies now set from the
+    first), or does every fresh launch hit this regardless of history?
   - **Still UNCONFIRMED**: whether scrolling a `/pdsearch/` page past its
     first SSR-embedded batch (confirmed 20 products per initial
     `gbRawData` snapshot, out of e.g. 17,059 total matches for one real
@@ -252,6 +286,45 @@ def is_disallowed_path(url_or_path: str) -> bool:
     if path in _DISALLOWED_PATH_EXACT:
         return True
     return any(path.startswith(prefix) for prefix in _DISALLOWED_PATH_PREFIXES)
+
+
+_TITLE_RE = re.compile(r"<title[^>]*>([^<]*)</title>", re.I)
+
+
+def diagnose_unexpected_page(html: str) -> str:
+    """Best-effort one-line summary of what a page actually contains, for
+    the "zero products found, but not flagged as blocked" warning every
+    engine logs when both window.gbRawData and the DOM fallback come up
+    empty on a /pdsearch/ or category URL's first render. Not a
+    classifier, no verdict — just enough surface detail (the page's own
+    <title>, whether either of the two markers a REAL search-results page
+    always has are present at all) that a user doesn't have to reach for
+    --dump-html and grep the captured page by hand to tell "this query
+    genuinely has zero results" apart from "shein.com served something
+    else entirely for this request."
+
+    That second case is REAL, not hypothetical — seen live 2026-09-21,
+    prompted by Roman's own test run: a freshly-launched, cookie-less
+    Playwright context's very first request to a confirmed-correct
+    `/pdsearch/summer%20dress/` URL got a page with NO `window.gbRawData`
+    assignment anywhere (only an unrelated identifier of the same name
+    inside a shared analytics bundle present on every page type) and an
+    EMPTY `<title>` — while the identical URL, requested through a
+    browser session that already carried shein.com cookies from earlier
+    browsing in the same profile, returned a normal page (title "Search
+    summer dress | SHEIN USA", 20 products in `window.gbRawData`)
+    seconds later. The mechanism behind this is UNCONFIRMED — a
+    consent/locale gate, a "new visitor" landing-page swap, or something
+    else tied to a completely fresh cookie jar are all plausible, none
+    verified — see shein_parser.py's module docstring, "Re-investigated
+    2026-09-21" section that inspired this, for the fuller write-up. This
+    function exists so the NEXT time this happens, whoever's looking at
+    the log doesn't have to redo that archaeology from a raw HTML dump.
+    """
+    m = _TITLE_RE.search(html)
+    title = m.group(1).strip() if m else ""
+    has_search_markers = ("bffProductsInfo" in html) or ("pdsearch" in html.lower())
+    return f"title={title!r}, search-page-markers-present={has_search_markers}, page-bytes={len(html)}"
 
 
 # --------------------------------------------------------------------------- #
