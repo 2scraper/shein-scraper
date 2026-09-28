@@ -1189,6 +1189,56 @@ def _():
     assert client.api_base != scraper_api_client.API_BASE
 
 
+@check("the single credential scanner passes; skip gracefully if it isn't in this checkout")
+def _():
+    # Guarded like sample_output/pyproject-changelog checks elsewhere in
+    # this file: a Docker build's COPY list is a deliberately stripped-
+    # down context that never includes .github/ (CLAUDE.md §14 — the
+    # image ships no test suite and no CI plumbing), so this must skip
+    # rather than crash there. The offline CI job (a full checkout) is
+    # what actually exercises this check.
+    scanner = ROOT / ".github" / "ci_checks.py"
+    if not scanner.exists():
+        return
+    import subprocess
+    import sys as _sys
+
+    result = subprocess.run(
+        [_sys.executable, str(scanner)], cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, f"ci_checks.py failed:\n{result.stdout}\n{result.stderr}"
+
+
+@check("credential scanner recognizes quoted and unquoted secret assignments, and does not flag a Python type-hint token as a secret")
+def _():
+    import importlib.util
+
+    scanner = ROOT / ".github" / "ci_checks.py"
+    if not scanner.exists():
+        return
+    spec = importlib.util.spec_from_file_location("shein_ci_checks", scanner)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    oauth_name = "CLAUDE_CODE" + "_OAUTH_TOKEN"
+    api_name = "api" + "_key"
+    value = "realvalue" + "123456"
+    for line in (
+        f'{oauth_name}="{value}"',
+        f"{oauth_name}={value}",
+        f"{api_name}: {value}",
+    ):
+        assert module.SECRET_ASSIGNMENT.search(line), line
+    # Regression: `api_key: Optional[str]` in a function signature matches
+    # the same NAME(:|=)VALUE shape a real unquoted secret assignment
+    # would — this is what scraper_api_client.py's __init__ looks like,
+    # and it must NOT be reported.
+    hint_line = f"{api_name}: Optional[str]"
+    match = module.SECRET_ASSIGNMENT.search(hint_line)
+    assert match is not None  # the regex itself still matches the shape
+    assert module._looks_like_type_hint(match.group(3))
+
+
 def run() -> int:
     """All @check-decorated functions above already ran at import time
     (that's the point — see the `check()` docstring) and self-registered
