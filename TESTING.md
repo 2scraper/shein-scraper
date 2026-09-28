@@ -237,3 +237,24 @@ Then, in the GitHub repo's Settings:
   failed — falling back" path actually fire and recover on a real,
   forced Scraping Browser failure, not just the faked one in
   `smoke_test.py`) answered the same way.
+- **Added 2026-09-28**: `smoke_test.py` now drives each engine's real
+  `main()` (forcing that engine's driver symbol to `None`), not just
+  `run()` directly — see `CHANGELOG.md`'s "Fixed" entry for the same
+  date. This caught a real `asyncio.get_event_loop()` crash in
+  `puppeteer_scraper.py`'s `main()` that every prior check missed, since
+  none of them called `main()` at all. Confirmed so far in the sandbox
+  build only: `smoke_test.py` passes 68/68 repeatedly (5 consecutive
+  runs) after the `puppeteer_scraper.py` fix. Separately, and earlier the
+  same day, `selenium_scraper.py --query "test"` was confirmed live on
+  Roman's own machine (selenium genuinely not installed there) to
+  correctly report "selenium is not installed" (exit 1) rather than
+  short-circuiting — that was a direct CLI run, not this new
+  `smoke_test.py` check, and predates the check existing. Playwright and
+  puppeteer's own "driver absent" path could not be live-tested the same
+  way as selenium's, because both are actually installed on Roman's
+  machine — the new `smoke_test.py` check is what covers those two
+  engines instead, by forcing the driver symbol to `None` in-process
+  rather than needing it genuinely uninstalled. Whether this new check
+  and the `puppeteer_scraper.py` fix have also been re-run live on
+  Roman's own machine (not just the sandbox) should be confirmed here
+  once that pass happens — not assumed from the sandbox result alone.

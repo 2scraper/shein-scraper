@@ -734,7 +734,7 @@ def main() -> int:
     args = build_arg_parser().parse_args()
     args = env_config.apply_env(args)
     try:
-        return asyncio.get_event_loop().run_until_complete(run(args))
+        return asyncio.run(run(args))
     except KeyboardInterrupt:
         return EXIT_CRASH
 

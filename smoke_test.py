@@ -1353,6 +1353,66 @@ def _():
             scraper_api_client.TwoCaptchaClient.scrape_url = original
 
 
+@check(
+    "main() never short-circuits on 'driver not installed' BEFORE calling a monkeypatched "
+    "run() -- regression test mirroring tipranks-scraper's own such check, added here "
+    "2026-09-28 after finding this file had no equivalent: every check above drives "
+    "run()/asyncio_run_maybe(mod, args) directly, bypassing main() entirely, so a duplicate "
+    "'driver is None' guard placed straight in main() -- the exact bug briefly shipped in "
+    "tipranks-scraper's selenium_scraper.py/puppeteer_scraper.py on 2026-09-28, see CLAUDE.md "
+    "§6 -- would pass every other check in this file while silently short-circuiting on a "
+    "machine without the driver installed (this was independently confirmed NOT present here "
+    "via a live run on Roman's own machine with selenium genuinely absent, but that only "
+    "covered one engine, once; this check covers all three, every time this suite runs, "
+    "regardless of what happens to be installed in whatever environment runs it). Forces the "
+    "driver symbol to None here, and drives main() itself via sys.argv -- this repo's main() "
+    "takes no argv parameter, unlike tipranks-scraper's -- rather than run() directly, so this "
+    "can only pass for the right reason."
+)
+def _():
+    import sys as _sys
+
+    async def _fake_run_ok_async(args):
+        return output_writer.EXIT_OK
+
+    def _fake_run_ok_sync(args):
+        return output_writer.EXIT_OK
+
+    driver_attr = {
+        playwright_scraper: "async_playwright",
+        selenium_scraper: "webdriver",
+        puppeteer_scraper: "pyppeteer_launch",
+    }
+    fake_run = {
+        playwright_scraper: _fake_run_ok_async,
+        selenium_scraper: _fake_run_ok_sync,
+        puppeteer_scraper: _fake_run_ok_async,
+    }
+
+    original_argv = _sys.argv
+    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
+        attr = driver_attr[mod]
+        original_driver = getattr(mod, attr)
+        original_run = mod.run
+        setattr(mod, attr, None)
+        mod.run = fake_run[mod]
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                _sys.argv = [
+                    "prog.py", "--query", "summer dress",
+                    "--out", str(Path(td) / "out.json"), "--allow-empty",
+                ]
+                code = mod.main()
+            assert code == output_writer.EXIT_OK, (
+                f"{mod.__name__}: got {code} with {attr}=None -- main() short-circuited "
+                f"before calling the monkeypatched run(), instead of reaching EXIT_OK (0)"
+            )
+        finally:
+            setattr(mod, attr, original_driver)
+            mod.run = original_run
+            _sys.argv = original_argv
+
+
 @check("the single credential scanner passes; skip gracefully if it isn't in this checkout")
 def _():
     # Guarded like sample_output/pyproject-changelog checks elsewhere in

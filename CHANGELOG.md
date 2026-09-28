@@ -9,6 +9,45 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Fixed — 2026-09-28, `puppeteer_scraper.py main()`: real `asyncio.get_event_loop()` crash, plus a new permanent regression guard for the whole `main()` entry point
+- Found while re-verifying this repo end to end after Roman's direct
+  feedback that "done" claims here have previously turned out to be
+  incomplete — rather than repeat a claim, a new `smoke_test.py` check was
+  written to actually drive each engine's real `main()` (not `run()`
+  directly, which is all every prior check did) with its own driver
+  symbol forced to `None`, mirroring a check `tipranks-scraper` already
+  has for a real short-circuit bug found there on this same date. The new
+  check confirmed no such short-circuit exists in any of shein-scraper's
+  three `main()` functions (they were already thin wrappers) — but it
+  also surfaced a real, independent, previously-undiscovered bug:
+  `puppeteer_scraper.py`'s `main()` called
+  `asyncio.get_event_loop().run_until_complete(run(args))`, which raises
+  `RuntimeError: There is no current event loop in thread 'MainThread'`
+  in any process where `asyncio.run()` has already run and closed a loop
+  earlier — for example inside this very test suite, once it drives more
+  than one engine's `main()`, or inside any pytest run, or any embedder
+  that uses `asyncio.run()` elsewhere. A standalone `python3
+  puppeteer_scraper.py ...` invocation in a fresh process was NOT
+  affected (confirmed by reproducing the crash only after an earlier
+  `asyncio.run()` call in the same process, and confirming its absence
+  without one) — but this is still a real robustness gap, not a
+  hypothetical one.
+- Fixed by switching to `asyncio.run(run(args))`, matching
+  `playwright_scraper.py`'s already-correct pattern in this same repo —
+  also closes a small, previously-unnoticed parity gap between the two
+  async engines' entry points (CLAUDE.md §4).
+- **Not yet checked**: `tipranks-scraper` and `g2-scraper`'s
+  `puppeteer_scraper.py` use the same `get_event_loop().run_until_complete`
+  pattern (confirmed present via a quick grep, not yet fixed or even
+  fully diagnosed there) — out of scope for this pass since Roman asked
+  for shein-scraper only, but worth knowing this may be a family-wide
+  gap, not unique to this repo.
+- The new `smoke_test.py` check (68 total, up from 67) stays in the suite
+  permanently, so this exact bug class — a real short-circuit OR a real
+  crash hiding behind `main()`, invisible to every check that calls
+  `run()` directly instead — cannot silently reappear in any of the three
+  engines without failing the suite.
+
 ### Added — 2026-09-28, `--scraper-api-cdp` automatic fallback when the Scraping Browser session itself fails
 - Prompted directly by Roman asking what happens today if `--scraper-api-cdp`'s
   Scraping Browser session fails — the honest answer at the time was
