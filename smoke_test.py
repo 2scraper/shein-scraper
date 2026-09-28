@@ -1259,6 +1259,100 @@ def _():
             scraper_api_client.TwoCaptchaClient.scrape_url = original
 
 
+@check(
+    "--scraper-api-cdp: an automatic ONE-TIME fallback to --scraper-api's plain default pool "
+    "when the Scraping Browser session itself fails (a Scraper API HTTP-level error, not a "
+    "normal blocked-with-zero-products outcome), all three engines. Three cases: (1) the "
+    "cdp-routed attempt fails, the fallback attempt (cdp_url=None) succeeds -> EXIT_OK, exactly "
+    "2 scrape_url calls, first with a real cdp_url, second with None; (2) both attempts fail -> "
+    "EXIT_REMOTE_API_ERROR, still exactly 2 calls (never retried a second time, never amplified "
+    "by --block-retries); (3) regression: plain --scraper-api with no --scraper-api-cdp hitting "
+    "remote_api_error triggers no fallback at all -- exactly 1 call, EXIT_REMOTE_API_ERROR, "
+    "unchanged from before this feature existed."
+)
+def _():
+    engines = (
+        (playwright_scraper, "playwright"),
+        (selenium_scraper, "selenium"),
+        (puppeteer_scraper, "puppeteer"),
+    )
+    for mod, engine_name in engines:
+        original = scraper_api_client.TwoCaptchaClient.scrape_url
+
+        # Case 1: cdp attempt fails, fallback (cdp_url=None) recovers.
+        calls = []
+
+        def _fake_recovers(self, url, *, data_format="raw", timeout=60, wait_for=None, cdp_url=None):
+            calls.append(cdp_url)
+            if cdp_url is not None:
+                raise scraper_api_client.TwoCaptchaError("Scraper API returned HTTP 422: bad cdpurl")
+            return scraper_api_client.ScrapeResult(target_status=200, headers={}, body=_SEARCH_PAGE_HTML)
+
+        scraper_api_client.TwoCaptchaClient.scrape_url = _fake_recovers
+        try:
+            parser = mod.build_arg_parser()
+            with tempfile.TemporaryDirectory() as td:
+                args = parser.parse_args([
+                    "--query", "summer dress",
+                    "--twocaptcha-key", "fake-key-for-test-only",
+                    "--scraper-api", "--scraper-api-cdp", "--scraper-api-country", "us",
+                    "--out", str(Path(td) / "out.json"), "--allow-empty",
+                ])
+                rc = asyncio_run_maybe(mod, args)
+            assert rc == output_writer.EXIT_OK, f"{engine_name}/recovers: expected EXIT_OK after a successful fallback with real search results, got {rc}"
+            assert len(calls) == 2, f"{engine_name}/recovers: expected exactly 2 scrape_url calls, got {calls!r}"
+            assert calls[0], f"{engine_name}/recovers: first call should carry a real cdp_url, got {calls[0]!r}"
+            assert calls[1] is None, f"{engine_name}/recovers: second (fallback) call should have cdp_url=None, got {calls[1]!r}"
+        finally:
+            scraper_api_client.TwoCaptchaClient.scrape_url = original
+
+        # Case 2: both the cdp attempt AND the fallback fail -> still just 2 calls total.
+        calls2 = []
+
+        def _fake_both_fail(self, url, *, data_format="raw", timeout=60, wait_for=None, cdp_url=None):
+            calls2.append(cdp_url)
+            raise scraper_api_client.TwoCaptchaError("Scraper API returned HTTP 500")
+
+        scraper_api_client.TwoCaptchaClient.scrape_url = _fake_both_fail
+        try:
+            parser = mod.build_arg_parser()
+            with tempfile.TemporaryDirectory() as td:
+                args = parser.parse_args([
+                    "--url", "https://us.shein.com/dsbayvkj-p-33704388.html",
+                    "--twocaptcha-key", "fake-key-for-test-only",
+                    "--scraper-api", "--scraper-api-cdp",
+                    "--out", str(Path(td) / "out.json"), "--allow-empty",
+                ])
+                rc = asyncio_run_maybe(mod, args)
+            assert rc == output_writer.EXIT_REMOTE_API_ERROR, f"{engine_name}/both-fail: expected EXIT_REMOTE_API_ERROR, got {rc}"
+            assert len(calls2) == 2, f"{engine_name}/both-fail: expected exactly 2 scrape_url calls (one fallback, never repeated), got {calls2!r}"
+        finally:
+            scraper_api_client.TwoCaptchaClient.scrape_url = original
+
+        # Case 3: regression -- plain --scraper-api (no --scraper-api-cdp) never falls back.
+        calls3 = []
+
+        def _fake_plain_fails(self, url, *, data_format="raw", timeout=60, wait_for=None, cdp_url=None):
+            calls3.append(cdp_url)
+            raise scraper_api_client.TwoCaptchaError("Scraper API returned HTTP 500")
+
+        scraper_api_client.TwoCaptchaClient.scrape_url = _fake_plain_fails
+        try:
+            parser = mod.build_arg_parser()
+            with tempfile.TemporaryDirectory() as td:
+                args = parser.parse_args([
+                    "--url", "https://us.shein.com/dsbayvkj-p-33704388.html",
+                    "--twocaptcha-key", "fake-key-for-test-only",
+                    "--scraper-api",
+                    "--out", str(Path(td) / "out.json"), "--allow-empty",
+                ])
+                rc = asyncio_run_maybe(mod, args)
+            assert rc == output_writer.EXIT_REMOTE_API_ERROR, f"{engine_name}/plain: expected EXIT_REMOTE_API_ERROR, got {rc}"
+            assert len(calls3) == 1, f"{engine_name}/plain: no --scraper-api-cdp means no fallback attempt, expected exactly 1 call, got {calls3!r}"
+        finally:
+            scraper_api_client.TwoCaptchaClient.scrape_url = original
+
+
 @check("the single credential scanner passes; skip gracefully if it isn't in this checkout")
 def _():
     # Guarded like sample_output/pyproject-changelog checks elsewhere in
