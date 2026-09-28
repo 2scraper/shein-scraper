@@ -9,6 +9,33 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Added — 2026-09-28, `--scraper-api-cdp` automatic fallback when the Scraping Browser session itself fails
+- Prompted directly by Roman asking what happens today if `--scraper-api-cdp`'s
+  Scraping Browser session fails — the honest answer at the time was
+  "nothing automatic": a failed CDP session just surfaced as
+  `remote_api_error` (exit 5) like any other Scraper API error, with no
+  attempt to fall back to `--scraper-api`'s plain default pool even though
+  that pool was still a real, working option.
+- All three engines now make exactly ONE automatic fallback attempt,
+  without `cdp_url`, when the cdp-routed attempt itself fails with a
+  Scraper API HTTP-level error (bad/expired `cdpurl`, or any other
+  Scraper API problem — there's no clean signal to tell those apart, so
+  any such failure gets the one fallback try). This is deliberately NOT
+  triggered by a normal "blocked with zero products" outcome — that's
+  what `--block-retries` is already for, and falling back to a pool with
+  *less* captcha-solving capability would not help a genuinely-blocked
+  page. The fallback is logged loudly (not silent), permanently drops
+  `cdp_url` for the rest of that run (so a remaining `--block-retries`
+  attempt doesn't keep hitting the same broken session), and is never
+  attempted more than once per run — confirmed by `smoke_test.py`, which
+  also confirms plain `--scraper-api` (no `--scraper-api-cdp`) is
+  completely unaffected: still exactly one attempt, no fallback logic
+  touched at all.
+- This does trade away `--scraper-api-cdp`'s own benefits (country/profile
+  pinning, 2Captcha's own captcha auto-solve) for the rest of a run that
+  falls back — an intentional "degrade, don't just fail" choice, not a
+  silent one: the warning names exactly what was lost.
+
 ### Added — 2026-09-28, `--scraper-api-cdp`: real captcha solving and country pinning for `--scraper-api`
 - `--scraper-api` on its own has two documented gaps: no captcha solving
   at all (a solved token has no live page/DOM in that mode to be injected

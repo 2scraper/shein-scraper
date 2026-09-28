@@ -181,6 +181,17 @@ only proves the `cdpurl` gets built correctly and reaches
 `scraper_api_client.scrape_url` — against a fake response, not a real
 2Captcha task.
 
+**The automatic fallback** (added 2026-09-28: if the Scraping Browser
+session itself fails, one automatic retry without `cdp_url`) is covered
+by `smoke_test.py` against a fake client that fails only when `cdp_url`
+is set, but has never been triggered by a REAL Scraping Browser failure.
+To force it live, pass an obviously-invalid `--scraper-api-profile-id`
+(or run with an account that has no Scraping Browser profiles left) and
+confirm in the log: the "Scraping Browser session failed — falling back"
+warning fires, the run still finishes (exit 0, not 5) using the plain
+pool, and a second such run without `--scraper-api-cdp` at all is
+unaffected.
+
 ## 9. Push to GitHub and let CI do the rest
 
 ```bash
@@ -222,3 +233,7 @@ Then, in the GitHub repo's Settings:
   actual captcha auto-solve) answered one way or the other, with README/
   CHANGELOG updated from "wired, not yet exercised live" to whatever was
   actually observed.
+- Step 8's automatic-fallback question (does the "Scraping Browser session
+  failed — falling back" path actually fire and recover on a real,
+  forced Scraping Browser failure, not just the faked one in
+  `smoke_test.py`) answered the same way.

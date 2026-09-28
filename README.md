@@ -197,6 +197,18 @@ support this field the way 2Captcha's own does. **Wired and covered by
 response), but not yet exercised against a real 2Captcha/shein.com
 session** — see `CHANGELOG.md` and `TESTING.md`.
 
+**If the Scraping Browser session itself fails** (added 2026-09-28) — a
+Scraper API HTTP-level error, not a normal blocked-with-zero-products
+page — the run automatically falls back to `--scraper-api`'s plain
+default pool ONCE, logged loudly, instead of giving up outright with
+`remote_api_error`. This is separate from `--block-retries` (which is for
+a genuinely blocked page, where a pool with *less* solving capability
+wouldn't help) and is never attempted a second time in the same run —
+`cdp_url` is dropped for good the moment it fires, trading away country/
+profile pinning and 2Captcha's own auto-solve for whatever's left of that
+run. Plain `--scraper-api` (no `--scraper-api-cdp`) is unaffected: no
+fallback logic runs at all.
+
 ### Family flags that don't apply here — and why
 
 - **`--pages`**: a shein.com listing is treated as a single scroll-based
