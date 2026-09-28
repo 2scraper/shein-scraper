@@ -4,14 +4,35 @@ surface. No site knowledge. `captcha_solver.py` and `fingerprint_client.py`
 both sit on top of this rather than calling `requests` directly, so there is
 exactly one place that knows the base URL, auth shape and error envelope.
 
-Covers three of 2Captcha's four separately-billed products behind one key
-(the fourth, proxies, is `proxy_pool.py` + SHEIN_PROXY — a 2captcha.com/
+Covers four of 2Captcha's five separately-billed products behind one key
+(the fifth, proxies, is `proxy_pool.py` + SHEIN_PROXY — a 2captcha.com/
 proxy credential, 2prx.com is a synonym for the same product, not a
 separate host):
 
   - classic captcha solving (createTask / getTaskResult)
   - the Scraping Browser API (POST /browser/connection -> a CDP URL)
   - the Fingerprint API (GET /fingerprint/random)
+  - the Scraper API (POST https://scraper.2captcha.com/tasks/sync) — added
+    2026-09-22. A GENUINELY DIFFERENT product from the Scraping Browser
+    API above, and easy to confuse with it: the Scraping Browser API hands
+    this process a CDP URL and WE drive a real Playwright/Selenium/
+    Puppeteer browser against it; the Scraper API instead runs the fetch
+    ENTIRELY on 2Captcha's own infrastructure (their own headless browser,
+    not ours) and hands back the rendered HTML/Markdown/screenshot over a
+    single HTTP call — no local or remote browser session on our end at
+    all. Lives on its own hostname (`scraper.2captcha.com`, not
+    `api.2captcha.com`) with its own Bearer-token auth, which is why it
+    gets its own `scraper_api_base` override rather than reusing
+    `self.api_base`. Confirmed live 2026-09-22 against shein.com: it DOES
+    fetch real pages (verified real product markup came back), but it is
+    NOT a bypass of shein's own bot-mitigation — the same `/risk/
+    challenge` interstitial that a local Playwright browser hits shows up
+    here too, intermittently, and there is no documented parameter to pin
+    the exit country/locale (a clean fetch landed on shein.com's
+    Netherlands locale in one live test, which this repo's parser — tuned
+    for the US/English markup — then read as zero products, not blocked).
+    See engine `run()`'s `--scraper-api` docstring/help text for what this
+    means for a caller.
 
 Never construct a competitor's API call from this module.
 """
@@ -27,6 +48,7 @@ import requests
 from proxy_pool import redact_credentials
 
 API_BASE = "https://api.2captcha.com"
+SCRAPER_API_BASE = "https://scraper.2captcha.com"
 
 
 class TwoCaptchaError(RuntimeError):
@@ -44,8 +66,24 @@ class CaptchaTask:
     task_id: int
 
 
+@dataclass
+class ScrapeResult:
+    """One Scraper API `/tasks/sync` response. `target_status` is the
+    TARGET page's own HTTP status (shein.com's, not 2Captcha's) — shein's
+    own risk gateway answers with 200 for a challenge page exactly like it
+    does for a real one (see shein_parser.py), so a caller still has to run
+    the same `detect_from_html(body, ...)` marker check as the browser
+    engines do; `target_status` alone does not tell blocked apart from ok."""
+    target_status: Optional[int]
+    headers: dict
+    body: str
+
+
 class TwoCaptchaClient:
-    def __init__(self, api_key: Optional[str], timeout: int = 30, api_base: Optional[str] = None):
+    def __init__(
+        self, api_key: Optional[str], timeout: int = 30, api_base: Optional[str] = None,
+        scraper_api_base: Optional[str] = None,
+    ):
         self.api_key = api_key
         self.timeout = timeout
         # `--captcha-api` (testing only): override the base URL so a smoke
@@ -57,6 +95,11 @@ class TwoCaptchaClient:
         # `self.api_base` (an instance attribute, never the module-level
         # API_BASE) is what every call below actually uses.
         self.api_base = api_base or API_BASE
+        # Same reasoning, same escape hatch, but a SEPARATE override and a
+        # SEPARATE default — the Scraper API lives on its own hostname
+        # (`scraper.2captcha.com`), not `api.2captcha.com`. `--scraper-api-
+        # url` (testing only) sets this; `--captcha-api` above never does.
+        self.scraper_api_base = scraper_api_base or SCRAPER_API_BASE
 
     def _require_key(self) -> str:
         if not self.api_key:
@@ -198,3 +241,70 @@ class TwoCaptchaClient:
         except requests.exceptions.RequestException as exc:
             raise TwoCaptchaError(f"fingerprint/random request failed: {redact_credentials(str(exc))}") from None
         return resp.json()
+
+    # ----------------------------------------------------------------- #
+    # Scraper API — one browserless fetch per call, no local/CDP browser
+    # ----------------------------------------------------------------- #
+    def scrape_url(
+        self, url: str, *, data_format: str = "raw", timeout: int = 60,
+        wait_for: Optional[dict] = None, cdp_url: Optional[str] = None,
+    ) -> ScrapeResult:
+        """POST https://scraper.2captcha.com/tasks/sync — see the module
+        docstring for how this differs from `scraping_browser_connection_
+        url()` above. `timeout` is 2Captcha's own bound on how long THEY
+        wait for the target page to finish loading (1-120s, their limit,
+        not ours) — not this call's own HTTP timeout, which is set a
+        little higher below so our client doesn't give up before 2Captcha
+        itself would. `wait_for`, if given, must already be the dict
+        2Captcha's own Playwright-shaped wait condition expects (e.g.
+        `{"state": "networkidle"}`) — confirmed live 2026-09-22 that a
+        JSON-encoded STRING here is rejected with `422 ScrapeParser:
+        params.waitFor must be an object`, despite the published docs
+        showing it as a string; this client sends it as a real JSON object
+        to match what the API actually accepts, not what its own docs
+        say. `cdp_url` (2Captcha's `cdpurl` field) lets a caller point
+        this fetch at a CDP session THEY already control instead of
+        2Captcha's own default browser pool — e.g. a `--cdp-endpoint`
+        Scraping Browser session, which does support country pinning,
+        unlike this endpoint on its own. Documented by 2Captcha but NOT
+        yet exercised live by this codebase — a real, but untested,
+        escape hatch for the locale problem described in the module
+        docstring, not a claim that it works."""
+        key = self._require_key()
+        payload = {
+            "task_type": "scrape",
+            "url": url,
+            "format": "json",
+            "data_format": data_format,
+            "timeout": timeout,
+        }
+        if wait_for:
+            payload["waitFor"] = wait_for
+        if cdp_url:
+            payload["cdpurl"] = cdp_url
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        try:
+            resp = requests.post(
+                f"{self.scraper_api_base}/tasks/sync", headers=headers, json=payload,
+                timeout=timeout + 15,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise TwoCaptchaError(f"Scraper API request failed: {redact_credentials(str(exc))}") from None
+        if resp.status_code == 401:
+            raise TwoCaptchaAuthError("Scraper API: invalid/missing TWOCAPTCHA_KEY")
+        if resp.status_code == 402:
+            raise TwoCaptchaError("Scraper API: insufficient 2Captcha balance")
+        if resp.status_code == 408:
+            raise TwoCaptchaError(f"Scraper API: task did not finish within {timeout}s")
+        if resp.status_code != 200:
+            raise TwoCaptchaError(
+                f"Scraper API returned HTTP {resp.status_code}: {redact_credentials(resp.text[:300])}"
+            )
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise TwoCaptchaError(f"Scraper API: non-JSON response ({resp.text[:200]})") from exc
+        return ScrapeResult(
+            target_status=data.get("http_code"), headers=data.get("headers") or {},
+            body=data.get("body") or "",
+        )

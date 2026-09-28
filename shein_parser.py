@@ -204,6 +204,102 @@ not guessed:
     surfaced the final URL that made this diagnosable at all, and it
     remains useful for whatever OTHER "zero products, not blocked" case
     shows up next that isn't covered by a known marker yet.
+  - **A FOURTH real incident shape, 2026-09-22 (Roman's own `--cdp-endpoint`
+    run, `--dump-html` capture)**: a plain HTTP 403 on the initial search
+    request, body a genuine SHEIN "outOfService" page (real
+    `img.ltwebstatic.com` asset, `<title>outOfService</title>`, "System
+    Updating... Hang tight! We will be right back!" copy, a per-request
+    `EVENT ID:` string) — small (~5.4KB), not a captcha, not `/risk/
+    challenge`, not `/risk/action/limit`. Already correctly classified:
+    `playwright_scraper.py`'s existing `status >= 400` check (unrelated to
+    any URL/marker matching) caught this and reported `blocked` (exit 3),
+    not `empty` — no code change was needed, this is just the first live
+    confirmation that path actually fires for real. Whether this is a
+    genuinely separate SHEIN maintenance window or the SAME anti-bot
+    system picking a softer-looking response than `/risk/challenge` or
+    `/risk/action/limit` for the same underlying signal is undetermined;
+    treat all four shapes (`/risk/challenge`, `/risk/action/limit`, this
+    "outOfService" 403, and any bare `>=400`) as one family of "SHEIN
+    doesn't want this request served" outcomes rather than assuming any
+    one of them is the "real" block and the others are noise.
+  - **A useful side-finding from the same capture, re: the GeeTest question
+    (CLAUDE.md-adjacent, not yet reflected in README's CDP-autosolve
+    coverage claim)**: the captured HTML's `<head>` shows 2Captcha's
+    Scraping Browser extension (`chrome-extension://
+    kjmkgkdkpedkejedfhmfcenooemhbpbo/...`) injecting BOTH
+    `content/captcha/geetest/interceptor.js` AND
+    `content/captcha/geetest_v4/interceptor.js` into every page in the
+    session, alongside turnstile/amazon_waf/yandex/lemin/arkoselabs/
+    recaptcha/keycaptcha/mt_captcha/captchafox interceptors. This is
+    evidence the extension at least WATCHES for GeeTest widgets — it
+    contradicts the earlier "GeeTest wasn't in the one capture that
+    confirmed CDP autosolve coverage" hedge (README, "Known limitations")
+    to the extent that absence-of-coverage was being read as "GeeTest
+    isn't supported at all." It is NOT yet proof GeeTest gets solved,
+    only that it gets looked for — no page with an actual GeeTest widget
+    has been captured through this CDP session yet to confirm the solve
+    step itself.
+  - **A FIFTH data point, same day, same query, hit `/risk/challenge?
+    captcha_type=909` again** (2026-09-22, `TWOCAPTCHA_KEY` now configured
+    — the first real chance for this repo's own solve-and-inject path to
+    run against a live incident). The initial `page.url` check (right
+    after `goto`) correctly caught the redirect and set `blocked = True`,
+    same as before. But `--dump-html`'s FINAL capture — after 5 scroll
+    rounds — was neither the challenge page nor the search results: it
+    was SHEIN's own plain homepage (`<title>Women's & Men's Clothing,
+    Shop Online Fashion | SHEIN</title>`, `window.gbRawData` present but
+    for homepage layout, `bffProductsInfo` absent, zero captcha-shaped
+    `<iframe>`s — only Criteo/Snapchat tracking pixels, no
+    `initGeetest`/`grecaptcha.render` calls anywhere). So the actual
+    widget markup for `captcha_type=909` STILL hasn't been captured —
+    whatever gate this is appears to resolve (or time out) on its own
+    within seconds and hand the browser off somewhere that ISN'T the
+    originally-requested `/pdsearch/` URL, with no interactive challenge
+    ever rendered in the DOM along the way. Whether 2Captcha's CDP
+    auto-solve silently passed it, or SHEIN's own side waved the session
+    through after an invisible risk-score check (more consistent with no
+    widget ever appearing), is undetermined either way.
+  - **A concrete bug this same capture exposed, now fixed**: the
+    homepage's own SSR state still contained the literal text
+    `"originalUrl":"/risk/challenge?captcha_type=909&redirection=..."` —
+    SHEIN's client-side router recording where the session CAME from, not
+    where it currently is. Every engine's round loop calls
+    `detect_from_html(html, BOT_CHALLENGE_MARKERS)` on each round's HTML,
+    and that stale text kept matching on all 5 rounds even though the
+    browser had long since left the gateway — reproducing
+    `"detected_unidentified_widget"` five times in the real log, none of
+    which reflected a real widget the solver failed to identify; there
+    was nothing there to identify. All three engines now corroborate any
+    marker match AFTER round 0 against the round's own current URL
+    (`page.url` / `driver.current_url`) before trusting it — round 0 is
+    still trusted unconditionally, since it's corroborated by the
+    page.url check that already runs immediately after the initial
+    navigation, before any content has had a chance to go stale.
+  - **CORRECTION, same day, a SIXTH data point (Roman's re-run right after
+    the fix above shipped, new `--cdp-endpoint` after the first one failed
+    with `proxy_timeout`)**: hit `captcha_type=909` again, and this time
+    the fix's own url-corroboration check gives a cleaner answer than the
+    FOURTH/FIFTH points' theory above. The "moved past the gateway to an
+    unrelated page" story was an inference from HTML content alone (the
+    fix didn't exist yet to check `page.url` directly). This run proves
+    `page.url` stayed on `/risk/challenge?captcha_type=909...` for the
+    ENTIRE 5-round loop — the url-corroboration check never fired its
+    "moved on" suppression message even once, and `_maybe_solve_captcha`
+    kept legitimately re-checking every round, same as before the fix.
+    So the more accurate characterization, confirmed on a second real
+    incident: the browser most likely never navigates away from
+    `/risk/challenge` at all. What renders under that URL is SHEIN's own
+    ordinary homepage content (or something that looks just like it),
+    with no interactive captcha DOM ever mounting — not a redirect
+    somewhere else, a client-side render that never produces (or gives up
+    waiting for) whatever component would show the real challenge. Two
+    real incidents now agree on this shape; the "redirected off to an
+    unrelated page" wording above is superseded, kept only as a record of
+    what the evidence looked like before `page.url` could be checked
+    per-round. The url-corroboration fix itself remains correct and
+    useful regardless — it's still the right defense for a genuinely
+    different future incident where the URL DOES move on while stale text
+    lingers — it just isn't what explains THIS pattern.
   - **Still UNCONFIRMED**: whether scrolling a `/pdsearch/` page past its
     first SSR-embedded batch (confirmed 20 products per initial
     `gbRawData` snapshot, out of e.g. 17,059 total matches for one real

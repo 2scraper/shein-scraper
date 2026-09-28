@@ -144,7 +144,8 @@ outright, never silently requested.
 --scroll-delay --format --out --retries --retry-delay --proxy --proxy-file
 --proxy-shuffle --proxy-block-retries --twocaptcha-key --captcha-api
 --solve-captcha --min-score --cdp-endpoint --fingerprint --fp-tags
---fp-country --allow-empty --dump-html --headless/--headful`
+--fp-country --scraper-api --scraper-api-timeout --scraper-api-url
+--allow-empty --dump-html --headless/--headful`
 
 Identical across all three engines — a `smoke_test.py` check asserts the
 three parsers' flag sets never drift apart. `--fingerprint`/`--fp-tags`/
@@ -158,6 +159,28 @@ below. `--captcha-api` overrides the 2Captcha REST base URL (testing only).
 request (0.3 default, matching the rest of the family). `--sort` is
 accepted and recorded on the run only — see "Read this before trusting a
 run" above for why it isn't wired into the URL yet.
+
+**`--scraper-api`** (added 2026-09-22) is the odd one out: every other flag
+above still launches a local or `--cdp-endpoint` browser this process
+drives itself; `--scraper-api` instead sends ONE browserless HTTP call to
+2Captcha's Scraper API (`scraper.2captcha.com`, a separate product from
+the Scraping Browser API `--cdp-endpoint` talks to — see
+`scraper_api_client.py`'s module docstring) and 2Captcha's own
+infrastructure fetches and renders the page for us. `--proxy`/
+`--cdp-endpoint`/`--fingerprint`/`--max-scrolls`/`--stall-rounds`/
+`--scroll-delay` are all ignored in this mode (logged as a warning, not
+silently dropped) — a single static fetch has no scroll loop and brings
+its own exit IP/device. Live-tested against real shein.com on all three
+engines, 2026-09-22: real product-page HTML does come back, and this
+repo's own `/risk/challenge` interstitial shows up here too sometimes
+(`--block-retries` helps the same way it does on the browser path), but
+there is no documented way to pin which country/locale 2Captcha's own
+infrastructure exits through — a clean, unblocked response landed on
+shein.com's Netherlands storefront in every live test today, which this
+repo's US/English-tuned parser correctly reports as zero products rather
+than miscounting. See `CHANGELOG.md` for the full write-up, including the
+untested `cdpurl` escape hatch (feeding a `--cdp-endpoint` session's CDP
+URL into the Scraper API call to pin geography) left for a future pass.
 
 ### Family flags that don't apply here — and why
 
@@ -352,13 +375,33 @@ since these are properties of the drivers, not the site):
   GeeTest in the one capture that confirmed it, so whether a real GeeTest
   challenge on shein.com gets auto-solved over CDP is itself unconfirmed,
   not just the local path.
-- **`scrape_product_page()` (the `--url` path pointed at a single product
-  page, in every engine) never attempts captcha solving at all** —
-  discovered while wiring the injection work above, not yet fixed. Only
-  `scrape_search()`'s scroll loop calls `_maybe_solve_captcha`; a
-  `/risk/challenge` redirect hit while fetching a single product page is
-  detected as `blocked` (the URL check still runs) but no 2Captcha solve
-  is ever attempted for it.
+- **Fixed 2026-09-22: `scrape_product_page()` (the `--url` path pointed at
+  a single product page, in every engine) now attempts captcha solving.**
+  Previously only `scrape_search()`'s scroll loop called
+  `_maybe_solve_captcha` — a `/risk/challenge` redirect hit while fetching
+  a single product page was detected as `blocked` (the URL check still
+  ran) but no 2Captcha solve was ever attempted for it. Fixing this
+  surfaced a second, more important bug that would have shipped alongside
+  a naive fix: `_maybe_solve_captcha`'s "are products already present, so
+  don't bother solving" check defaults to `sp.count_result_cards`, which
+  is SEARCH-page-shaped and returns `0` on literally every product page —
+  wiring that default straight into `scrape_product_page()` would have
+  meant every normal product-page scrape either logged a false
+  "unidentified widget" warning (thanks to the confirmed-real, site-wide
+  reCAPTCHA v2 loader — see the sitekey finding above) or, worse, actually
+  spent a real 2Captcha solve on a page that was never blocked at all,
+  whenever a real sitekey also happened to be on the page. Fixed by
+  passing a product-page-shaped check instead (did
+  `sp.parse_product_page()` already find real data?), and — since there's
+  no scroll/round loop here to pick an injected solution up naturally the
+  way `scrape_search()`'s next round does — a single re-fetch of the page
+  after a successful solve, so the attempt can actually change the
+  outcome instead of being purely theatrical. `smoke_test.py` gained both
+  a structural check (every engine's `scrape_product_page()` calls
+  `_maybe_solve_captcha` AND passes its own `count_product_links`) and a
+  behavioral one (proves the old default would have skipped solving on a
+  genuinely blocked product page, and proves the fix correctly skips
+  solving on a genuinely fine one).
 - **`playwright_scraper.py` HAS now been run live against the real site**
   (Roman's own machine, 2026-09-21, not blocked by this repo's own
   execution environments the way earlier attempts were — see
@@ -398,6 +441,53 @@ since these are properties of the drivers, not the site):
   useful for whatever next "zero products, not blocked" case isn't
   covered by a known marker yet. See `shein_parser.py`'s module
   docstring for the full write-up.
+- **A fourth real block shape, confirmed 2026-09-22**: a plain HTTP `403`
+  whose body is SHEIN's own genuine "outOfService" page (real
+  `img.ltwebstatic.com` asset, `<title>outOfService</title>`, "System
+  Updating" copy, a per-request `EVENT ID:`), captured live via `--dump-html`
+  on a `--cdp-endpoint` run. Not a captcha, not `/risk/challenge`, not
+  `/risk/action/limit` — but already handled correctly with no code change:
+  the existing `status >= 400` check reports it as `blocked` (exit 3), same
+  as the other three shapes. Treat `/risk/challenge`, `/risk/action/limit`,
+  this "outOfService" 403, and any other `>=400` as one family of "SHEIN
+  declined to serve this request" outcomes — which one you hit on a given
+  run looks rotated/randomized, not something a fixed URL or header check
+  alone predicts. See `shein_parser.py`'s module docstring for the full
+  write-up.
+- **Correction to the GeeTest-over-CDP coverage claim above**: the same
+  `--dump-html` capture shows 2Captcha's Scraping Browser extension
+  injecting `geetest/interceptor.js` AND `geetest_v4/interceptor.js` into
+  every page (alongside the previously-confirmed Turnstile/Amazon WAF/
+  Yandex/Lemin set, plus arkoselabs/recaptcha/keycaptcha/mt_captcha/
+  captchafox). So GeeTest is at least watched-for by the extension, which
+  the 2026-09-14 capture didn't happen to show — but interceptor presence
+  is not the same as a confirmed solve; no page with a live GeeTest widget
+  has gone through this CDP session yet. Treat CDP-side GeeTest support as
+  "plausible, no longer unlisted" rather than "confirmed" or "absent."
+- **Added 2026-09-22: `--block-retries` (default `2`) — retry a blocked,
+  zero-product outcome on the SAME browser/proxy/CDP session before giving
+  up**, instead of declaring failure on the first hit. This follows a
+  measured pattern from sibling family member `etsy-scraper` (see
+  https://github.com/2scraper): against its own DataDome-protected site,
+  one profile was refused twice and cleared from the third attempt
+  onward — "retry before you rotate." It will NOT fix the `captcha_type=909`
+  incident below — that one keeps the browser on the gateway URL with no
+  path forward no matter how many times the page reloads on the same
+  session, confirmed on two separate real hits.
+- **Fixed 2026-09-22: a stale-text false positive in the captcha-detection
+  round loop.** With `TWOCAPTCHA_KEY` finally configured, a live
+  `/risk/challenge?captcha_type=909` hit gave this repo's own solve path
+  its first real chance to run, live — and the widget markup STILL wasn't
+  captured. SHEIN's redirect target is embedded as literal text in the
+  page's own SSR state (an `"originalUrl"` field — "where this session
+  came from"), which can keep matching `BOT_CHALLENGE_MARKERS` on later
+  scroll rounds even after the browser has moved to a completely
+  different, unrelated page (confirmed live: SHEIN's own homepage — zero
+  captcha widgets, zero challenge iframes, only ad-tracking pixels). This
+  produced five misleading `"detected_unidentified_widget"` warnings in
+  one real run. All three engines now corroborate a post-round-0 marker
+  match against that round's own current URL before trusting it. See
+  `shein_parser.py`'s module docstring for the full write-up.
 - **Scroll-driven pagination growth is unconfirmed** — see "Pagination"
   above.
 - **DOM fallback selectors are unverified guesses** (`# TODO: verify live`

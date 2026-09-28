@@ -428,6 +428,45 @@ def _():
         )
 
 
+@check("all three engines' round loop corroborates a post-round-0 BOT_CHALLENGE_MARKERS match against that round's own current URL before trusting it (added 2026-09-22 — a real live run's stale 'originalUrl' SSR text kept matching BOT_CHALLENGE_MARKERS on rounds AFTER the browser had already moved off the risk gateway onto an unrelated page, misreporting captcha-solve failures 5 rounds running; see shein_parser.py's module docstring)")
+def _():
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert "not re-flagging this round as a captcha block" in src, (
+            f"{path} lost the stale-marker corroboration fix — a captcha marker match on ANY "
+            f"round would be trusted again even after the browser has moved off the risk gateway"
+        )
+        assert "round_num > 0" in src, (
+            f"{path}'s corroboration must be scoped to rounds AFTER 0 — round 0 stays "
+            f"unconditionally trusted, since it's corroborated by the page.url check that "
+            f"already runs right after the initial navigation, before content can go stale"
+        )
+        # The solve attempt itself must now be gated on the (corroborated)
+        # captcha_detected flag, not called unconditionally every round —
+        # otherwise solve_when_blocked's OWN internal marker check (same
+        # markers, same possibly-stale html) reproduces the exact same
+        # false positive one layer down, making the corroboration above a
+        # no-op for the actual bug that was observed live.
+        assert "captcha_result = None" in src, (
+            f"{path}'s captcha-solve call must default to skipped (None) and only run when "
+            f"captcha_detected is still true after url corroboration"
+        )
+
+
+@check("all three engines implement '--block-retries' — retry a blocked/zero-product outcome on the SAME browser/session before giving up, rather than declaring failure on the first hit (added 2026-09-22, directly prompted by Roman asking why this repo can't clear SHEIN's defenses the way sibling family members clear theirs — etsy-scraper's own README documents measuring exactly this: one DataDome profile refused (t=bv) twice, then cleared from the third attempt on — 'retry before you rotate, use a handful rather than minting one per run')")
+def _():
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert "--block-retries" in src, f"{path} is missing the --block-retries flag — engine parity gap"
+        assert "block_attempt" in src, (
+            f"{path} is missing the retry loop itself (not just the flag) around its scrape_fn call"
+        )
+        assert "retry before you rotate" in src.lower(), (
+            f"{path}'s --block-retries help text lost the sibling-repo justification — this is not "
+            f"an arbitrary knob, it's a documented, measured pattern from etsy-scraper's own README"
+        )
+
+
 @check("captcha_solver.identify_widget extracts a Turnstile sitekey")
 def _():
     html = '<div class="cf-turnstile" data-sitekey="0x4AAA_example"></div>'
@@ -602,6 +641,122 @@ def _():
         src = (ROOT / path).read_text(encoding="utf-8")
         assert "build_injection_script" in src, f"{path} no longer imports/calls build_injection_script"
         assert "CaptchaType(result[\"captcha_type\"])" in src, f"{path} doesn't build a CaptchaType from the solved result"
+
+
+@check("EVERY function that takes an 'autosolve' parameter actually calls the Captcha.setAutoSolve helper somewhere in its body — playwright/puppeteer only, selenium is exempt (cannot authenticate --cdp-endpoint at all, CLAUDE.md §6). Regression test for a real 2026-09-22 gap: puppeteer_scraper.py's scrape_product_page() took `autosolve` and silently never used it, so a direct --url <product page> run over --cdp-endpoint never armed auto-solve, asymmetric with playwright_scraper.py (which armed it at BOTH its scrape_search and scrape_product_page call sites) and asymmetric with puppeteer's own scrape_search(). Roman's flippa-scraper spec ('на любой странице... авторешение... должно попытаться её решить') is exactly this requirement, generalized to 'every page', so this is now enforced here rather than left to be rediscovered per repo.")
+def _():
+    import ast as _ast
+
+    HELPER_NAME = "_enable_scraping_browser_auto_solve"
+    for path in ("playwright_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        tree = _ast.parse(src, filename=path)
+        checked_any = False
+        for node in _ast.walk(tree):
+            if not isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                continue
+            arg_names = {a.arg for a in node.args.args} | {a.arg for a in node.args.kwonlyargs}
+            if "autosolve" not in arg_names:
+                continue
+            if node.name == HELPER_NAME.lstrip("_"):  # never applies, defensive only
+                continue
+            checked_any = True
+            calls_helper = any(
+                isinstance(n, _ast.Call)
+                and (
+                    (isinstance(n.func, _ast.Name) and n.func.id == HELPER_NAME)
+                    or (isinstance(n.func, _ast.Attribute) and n.func.attr == HELPER_NAME)
+                )
+                for n in _ast.walk(node)
+            )
+            assert calls_helper, (
+                f"{path}: {node.name}() takes an 'autosolve' parameter but never calls "
+                f"{HELPER_NAME}() — captcha auto-solve would silently never be armed on "
+                f"this page/navigation path when --cdp-endpoint + --solve-captcha are set."
+            )
+        assert checked_any, f"{path}: expected at least one function with an 'autosolve' parameter (test itself may be stale)"
+
+
+@check("scrape_product_page() actually attempts captcha solving in all three engines — regression test for a real, README-documented 2026-09-22 gap: only scrape_search()'s round loop ever called _maybe_solve_captcha, so a direct --url <product page> run never tried to solve a captcha at all, even with --twocaptcha-key configured and --solve-captcha not 'off'. Fixed by adding the same call to scrape_product_page(), with a product-page-shaped 'already has real content' check (did sp.parse_product_page() succeed?) instead of scrape_search()'s sp.count_result_cards default, which would misfire on every product page (zero search-result cards there by definition) — see _maybe_solve_captcha's own updated docstring in each engine.")
+def _():
+    import ast as _ast
+
+    HELPER_NAME = "_maybe_solve_captcha"
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        tree = _ast.parse(src, filename=path)
+        target = None
+        for node in _ast.walk(tree):
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and node.name == "scrape_product_page":
+                target = node
+                break
+        assert target is not None, f"{path}: no scrape_product_page() found (test itself may be stale)"
+        calls_helper = any(
+            isinstance(n, _ast.Call)
+            and (
+                (isinstance(n.func, _ast.Name) and n.func.id == HELPER_NAME)
+                or (isinstance(n.func, _ast.Attribute) and n.func.attr == HELPER_NAME)
+            )
+            for n in _ast.walk(target)
+        )
+        assert calls_helper, f"{path}: scrape_product_page() never calls {HELPER_NAME}() — a captcha on a product page would never be solved"
+        # And it must NOT silently inherit the search-page-shaped default —
+        # every call site inside scrape_product_page must pass its own
+        # count_product_links override.
+        calls = [
+            n for n in _ast.walk(target)
+            if isinstance(n, _ast.Call)
+            and (
+                (isinstance(n.func, _ast.Name) and n.func.id == HELPER_NAME)
+                or (isinstance(n.func, _ast.Attribute) and n.func.attr == HELPER_NAME)
+            )
+        ]
+        for call in calls:
+            kw_names = {kw.arg for kw in call.keywords}
+            assert "count_product_links" in kw_names, (
+                f"{path}: scrape_product_page()'s call to {HELPER_NAME}() doesn't pass "
+                f"count_product_links — it would silently inherit the search-page-shaped "
+                f"sp.count_result_cards default, which reads every product page as blocked."
+            )
+
+
+@check("BEHAVIORAL proof (not just structural) of the same fix: solve_when_blocked with the OLD search-page-shaped count_product_links default (sp.count_result_cards, always 0 on a product page) misreads a COMPLETELY NORMAL product page as '0 products present' the instant any generic marker is on it — and the confirmed-real, site-wide reCAPTCHA v2 loader (README 'Known limitations') is exactly such a marker. That would have meant every single product-page scrape either logged a false 'unidentified widget' warning, or — if a real sitekey happens to also be on the page (also confirmed common) — actually called 2Captcha's PAID createTask API against a page that was never blocked at all. The product-page-shaped count (did sp.parse_product_page() succeed?) correctly recognises the page is fine and skips solving entirely.")
+def _():
+    html = (
+        '<html><head>'
+        '<script src="https://www.google.com/recaptcha/api.js"></script>'
+        '<script type="application/ld+json">'
+        '{"@context":"https://schema.org","@type":"ProductGroup","name":"Test Dress",'
+        '"hasVariant":[{"@type":"Product","sku":"33704388","name":"Test Dress",'
+        '"offers":{"@type":"Offer","price":"19.99","priceCurrency":"USD"}}]}'
+        '</script></head><body>real product content here</body></html>'
+    )
+
+    class _FakeClient:
+        api_key = "fake"
+
+    assert captcha_solver.detect_from_html(html, sp.BOT_CHALLENGE_MARKERS), "test fixture must trip the marker check"
+    assert sp.count_result_cards(html) == 0, "a product page must have zero search-result cards, by definition"
+    assert sp.parse_product_page(html, url="https://x"), "test fixture must parse as a real product"
+
+    old_shape = captcha_solver.solve_when_blocked(
+        client=_FakeClient(), page_url="https://x", html=html,
+        count_product_links=sp.count_result_cards, extra_markers=sp.BOT_CHALLENGE_MARKERS,
+    )
+    new_shape = captcha_solver.solve_when_blocked(
+        client=_FakeClient(), page_url="https://x", html=html,
+        count_product_links=lambda h: 1 if sp.parse_product_page(h, url="https://x") else 0,
+        extra_markers=sp.BOT_CHALLENGE_MARKERS,
+    )
+    assert old_shape["action"] != "skipped_products_present", (
+        "this assertion documents the OLD bug shape, not a requirement — if this ever starts "
+        "failing it means sp.count_result_cards started recognising product pages, which would "
+        "make the whole fix (and this test) moot, not broken"
+    )
+    assert new_shape["action"] == "skipped_products_present", (
+        f"product-page-shaped count_product_links must recognise a normal, already-parsing "
+        f"product page and skip solving — got {new_shape['action']!r} instead"
+    )
 
 
 # --------------------------------------------------------------------------- #
