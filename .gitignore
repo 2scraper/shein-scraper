@@ -35,3 +35,6 @@ node_modules/
 .env
 *.key
 secrets*
+
+# sync/transfer artifacts, not part of the repo
+*.tar.gz
