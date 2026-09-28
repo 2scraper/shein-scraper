@@ -148,7 +148,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "scrape_url's own docstrings for exactly what 2Captcha documents. Requires "
              "--scraper-api. WIRED BUT NOT YET LIVE-TESTED: the underlying 'cdpurl' field is "
              "documented by 2Captcha but this codebase had never exercised it before this flag "
-             "existed — confirm it live before relying on it (TESTING.md).",
+             "existed — confirm it live before relying on it (TESTING.md). If the Scraping "
+             "Browser session itself fails (a Scraper API HTTP error, not a normal blocked-with-"
+             "zero-products outcome), this run automatically falls back to --scraper-api's plain "
+             "default pool once, logged loudly, rather than giving up outright — losing country/"
+             "profile pinning and 2Captcha's own captcha auto-solve for the rest of that run.",
     )
     p.add_argument("--scraper-api-country", default=None, help="Exit country for --scraper-api-cdp's Scraping Browser session, e.g. 'us' (ignored without --scraper-api-cdp)")
     p.add_argument("--scraper-api-profile-id", default=None, help="Reuse a specific Scraping Browser profile id across runs for --scraper-api-cdp, instead of the default pool (ignored without --scraper-api-cdp; see scraping_browser_connection_url's docstring on why reuse is preferred)")
@@ -650,11 +654,27 @@ def run(args: argparse.Namespace) -> int:
             )
         blocked = remote_api_error = False
         merged: List[Product] = []
+        cdp_fallback_used = False
         for block_attempt in range(args.block_retries + 1):
             merged, blocked, remote_api_error, rounds, scroll_error = _scrape_via_scraper_api(
                 args=args, start_url=start_url, is_product_page=is_product_page, client=client,
                 cdp_url=cdp_url,
             )
+            if remote_api_error and cdp_url is not None and not cdp_fallback_used:
+                # See playwright_scraper.py's identical fallback for the
+                # full rationale (duplicated per engine per CLAUDE.md §4).
+                log.warning(
+                    "--scraper-api-cdp's Scraping Browser session failed — falling back to "
+                    "--scraper-api's plain default pool for the rest of this run instead of "
+                    "giving up outright. This run no longer has --scraper-api-cdp's country/"
+                    "profile pinning or 2Captcha's own captcha auto-solve."
+                )
+                cdp_fallback_used = True
+                cdp_url = None
+                merged, blocked, remote_api_error, rounds, scroll_error = _scrape_via_scraper_api(
+                    args=args, start_url=start_url, is_product_page=is_product_page, client=client,
+                    cdp_url=cdp_url,
+                )
             if remote_api_error or not (blocked and not merged):
                 break
             if block_attempt < args.block_retries:
