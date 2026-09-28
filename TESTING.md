@@ -242,19 +242,24 @@ Then, in the GitHub repo's Settings:
   `run()` directly — see `CHANGELOG.md`'s "Fixed" entry for the same
   date. This caught a real `asyncio.get_event_loop()` crash in
   `puppeteer_scraper.py`'s `main()` that every prior check missed, since
-  none of them called `main()` at all. Confirmed so far in the sandbox
-  build only: `smoke_test.py` passes 68/68 repeatedly (5 consecutive
-  runs) after the `puppeteer_scraper.py` fix. Separately, and earlier the
-  same day, `selenium_scraper.py --query "test"` was confirmed live on
-  Roman's own machine (selenium genuinely not installed there) to
-  correctly report "selenium is not installed" (exit 1) rather than
-  short-circuiting — that was a direct CLI run, not this new
-  `smoke_test.py` check, and predates the check existing. Playwright and
-  puppeteer's own "driver absent" path could not be live-tested the same
-  way as selenium's, because both are actually installed on Roman's
-  machine — the new `smoke_test.py` check is what covers those two
-  engines instead, by forcing the driver symbol to `None` in-process
-  rather than needing it genuinely uninstalled. Whether this new check
-  and the `puppeteer_scraper.py` fix have also been re-run live on
-  Roman's own machine (not just the sandbox) should be confirmed here
-  once that pass happens — not assumed from the sandbox result alone.
+  none of them called `main()` at all. Confirmed on Roman's own machine,
+  not just the sandbox: `smoke_test.py` passes 68/68 over 5 consecutive
+  runs there (same as the sandbox), the credential scanner
+  (`.github/ci_checks.py`) passes, and the working tree is clean with no
+  stray files. Two direct, real (not mocked) CLI runs on that machine the
+  same day: `selenium_scraper.py --query "test"` with selenium genuinely
+  not installed there correctly reports "selenium is not installed"
+  (exit 1) rather than short-circuiting — run twice, once before this
+  sync and once after, same result both times; and `puppeteer_scraper.py
+  --query "test"`, with pyppeteer actually installed and a real
+  `SHEIN_CDP_ENDPOINT` from `.env`, got past the asyncio setup this fix
+  touches and into an actual CDP connection attempt (which then hung on
+  the network-egress block this file's intro already documents, not on
+  the asyncio bug — confirmed by the absence of the
+  `RuntimeError: There is no current event loop` traceback that occurred
+  reliably before the fix). Playwright and puppeteer's own "driver
+  absent" path still could not be live-tested the same way as selenium's,
+  because both are actually installed on Roman's machine — the new
+  `smoke_test.py` check is what covers those two engines instead, by
+  forcing the driver symbol to `None` in-process rather than needing it
+  genuinely uninstalled.

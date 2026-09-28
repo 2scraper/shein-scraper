@@ -47,6 +47,14 @@ rather than being a silent violation of that.
   crash hiding behind `main()`, invisible to every check that calls
   `run()` directly instead — cannot silently reappear in any of the three
   engines without failing the suite.
+- **Confirmed on Roman's own machine, not just the sandbox** (see
+  `TESTING.md` §10): 68/68 over 5 consecutive `smoke_test.py` runs, the
+  credential scanner passing, a clean working tree, and two direct real
+  CLI runs — `selenium_scraper.py` still correctly reports "not
+  installed" with selenium genuinely absent, and `puppeteer_scraper.py`
+  with pyppeteer genuinely present got past the asyncio setup into a real
+  CDP connection attempt with no `RuntimeError`, where before the fix it
+  crashed immediately in the same conditions.
 
 ### Added — 2026-09-28, `--scraper-api-cdp` automatic fallback when the Scraping Browser session itself fails
 - Prompted directly by Roman asking what happens today if `--scraper-api-cdp`'s
