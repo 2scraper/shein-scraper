@@ -1189,6 +1189,76 @@ def _():
     assert client.api_base != scraper_api_client.API_BASE
 
 
+@check("all three engines define --scraper-api-cdp/--scraper-api-country/--scraper-api-profile-id, and pass cdp_url through to scraper_api_client.scrape_url (added 2026-09-28, closing the 'no captcha solving, no locale pinning' gap --scraper-api's own help text used to document as simply unsolved)")
+def _():
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert '"--scraper-api-cdp"' in src, f"{path}: no --scraper-api-cdp flag"
+        assert '"--scraper-api-country"' in src, f"{path}: no --scraper-api-country flag"
+        assert '"--scraper-api-profile-id"' in src, f"{path}: no --scraper-api-profile-id flag"
+        assert "cdp_url=cdp_url" in src, f"{path}: _scrape_via_scraper_api is not called with cdp_url"
+        assert "scraping_browser_connection_url(" in src, f"{path}: --scraper-api-cdp never builds a Scraping Browser URL"
+        assert "--scraper-api-cdp requires --scraper-api" in src, f"{path}: --scraper-api-cdp isn't guarded to require --scraper-api"
+
+
+@check("BEHAVIORAL proof (not just structural) of the same fix, all three engines: --scraper-api-cdp actually builds a country/profile-pinned Scraping Browser URL and it reaches scraper_api_client.scrape_url's cdp_url argument; without the flag cdp_url stays None (regression: default --scraper-api behavior unchanged); --scraper-api-cdp without --scraper-api is EXIT_BAD_USAGE, not a silent no-op")
+def _():
+    engines = (
+        (playwright_scraper, "playwright"),
+        (selenium_scraper, "selenium"),
+        (puppeteer_scraper, "puppeteer"),
+    )
+    for mod, engine_name in engines:
+        captured = {}
+        original = scraper_api_client.TwoCaptchaClient.scrape_url
+
+        def _fake_scrape_url(self, url, *, data_format="raw", timeout=60, wait_for=None, cdp_url=None):
+            captured["cdp_url"] = cdp_url
+            return scraper_api_client.ScrapeResult(
+                target_status=200, headers={}, body="<html><script>window.gbRawData={}</script></html>",
+            )
+
+        scraper_api_client.TwoCaptchaClient.scrape_url = _fake_scrape_url
+        try:
+            parser = mod.build_arg_parser()
+
+            # --scraper-api-cdp without --scraper-api: EXIT_BAD_USAGE, all
+            # three engines (checked before any network-shaped call is made).
+            bad_args = parser.parse_args(["--url", "https://us.shein.com/x-p-1.html", "--scraper-api-cdp"])
+            rc = asyncio_run_maybe(mod, bad_args)
+            assert rc == output_writer.EXIT_BAD_USAGE, f"{engine_name}: --scraper-api-cdp without --scraper-api should be EXIT_BAD_USAGE, got {rc}"
+
+            # With the flag: cdp_url is built and reaches scrape_url,
+            # carrying the requested country + profile id.
+            with tempfile.TemporaryDirectory() as td:
+                on_args = parser.parse_args([
+                    "--url", "https://us.shein.com/dsbayvkj-p-33704388.html",
+                    "--twocaptcha-key", "fake-key-for-test-only",
+                    "--scraper-api", "--scraper-api-cdp",
+                    "--scraper-api-country", "us", "--scraper-api-profile-id", "smoke-test-profile",
+                    "--out", str(Path(td) / "out.json"), "--allow-empty",
+                ])
+                asyncio_run_maybe(mod, on_args)
+            cdp_url = captured.get("cdp_url")
+            assert cdp_url, f"{engine_name}: --scraper-api-cdp did not produce a cdp_url"
+            assert "-country-us" in cdp_url, f"{engine_name}: cdp_url does not carry the requested country: {cdp_url!r}"
+            assert "-pid-smoke-test-profile" in cdp_url, f"{engine_name}: cdp_url does not carry the requested profile id: {cdp_url!r}"
+
+            # Without the flag: unchanged from before this feature existed.
+            captured.clear()
+            with tempfile.TemporaryDirectory() as td:
+                off_args = parser.parse_args([
+                    "--url", "https://us.shein.com/dsbayvkj-p-33704388.html",
+                    "--twocaptcha-key", "fake-key-for-test-only",
+                    "--scraper-api",
+                    "--out", str(Path(td) / "out.json"), "--allow-empty",
+                ])
+                asyncio_run_maybe(mod, off_args)
+            assert captured.get("cdp_url") is None, f"{engine_name}: cdp_url should be None without --scraper-api-cdp, got {captured.get('cdp_url')!r}"
+        finally:
+            scraper_api_client.TwoCaptchaClient.scrape_url = original
+
+
 @check("the single credential scanner passes; skip gracefully if it isn't in this checkout")
 def _():
     # Guarded like sample_output/pyproject-changelog checks elsewhere in

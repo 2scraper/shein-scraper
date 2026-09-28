@@ -163,7 +163,25 @@ testing if you want to test them in isolation.
 python3 playwright_scraper.py --query "summer dress" --out /tmp/shein_proxy.json
 ```
 
-## 8. Push to GitHub and let CI do the rest
+## 8. The Scraper API (`--scraper-api` / `--scraper-api-cdp`), for real
+
+```bash
+python3 playwright_scraper.py --query "summer dress" --scraper-api --out /tmp/shein_scraper_api.json
+python3 playwright_scraper.py --query "summer dress" --scraper-api --scraper-api-cdp \
+    --scraper-api-country us --out /tmp/shein_scraper_api_cdp.json
+```
+
+Worth specifically testing here, neither yet exercised against a real
+2Captcha/shein.com session: whether `--scraper-api-cdp` actually lands on
+the `--scraper-api-country` storefront requested (the locale problem
+plain `--scraper-api` has — see README/CHANGELOG), and whether a captcha
+shown during this fetch is actually solved on 2Captcha's own side of that
+Scraping Browser session before the HTML comes back at all. `smoke_test.py`
+only proves the `cdpurl` gets built correctly and reaches
+`scraper_api_client.scrape_url` — against a fake response, not a real
+2Captcha task.
+
+## 9. Push to GitHub and let CI do the rest
 
 ```bash
 git remote add origin git@github.com:2scraper/shein-scraper.git
@@ -184,7 +202,7 @@ Then, in the GitHub repo's Settings:
   this is this repo's actual FIRST live engine test, so look at the run's
   log and uploaded artifact, not just the badge color.
 
-## 9. What "done" looks like
+## 10. What "done" looks like
 
 - `tests.yml` green on both Python versions and all three `engine-smoke`
   matrix legs.
@@ -200,3 +218,7 @@ Then, in the GitHub repo's Settings:
   `shein_parser.py`'s module docstring.
 - Whether `/risk/challenge` recurs, and under what conditions (proxy?
   fingerprint? plain local run?), documented one way or the other.
+- Step 8's two open questions (`--scraper-api-cdp` locale pinning and
+  actual captcha auto-solve) answered one way or the other, with README/
+  CHANGELOG updated from "wired, not yet exercised live" to whatever was
+  actually observed.

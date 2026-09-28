@@ -145,6 +145,7 @@ outright, never silently requested.
 --proxy-shuffle --proxy-block-retries --twocaptcha-key --captcha-api
 --solve-captcha --min-score --cdp-endpoint --fingerprint --fp-tags
 --fp-country --scraper-api --scraper-api-timeout --scraper-api-url
+--scraper-api-cdp --scraper-api-country --scraper-api-profile-id
 --allow-empty --dump-html --headless/--headful`
 
 Identical across all three engines — a `smoke_test.py` check asserts the
@@ -178,9 +179,23 @@ there is no documented way to pin which country/locale 2Captcha's own
 infrastructure exits through — a clean, unblocked response landed on
 shein.com's Netherlands storefront in every live test today, which this
 repo's US/English-tuned parser correctly reports as zero products rather
-than miscounting. See `CHANGELOG.md` for the full write-up, including the
-untested `cdpurl` escape hatch (feeding a `--cdp-endpoint` session's CDP
-URL into the Scraper API call to pin geography) left for a future pass.
+than miscounting. By itself this mode also has no captcha solving — a
+solved token has no live page/DOM here to be injected into.
+
+**`--scraper-api-cdp`** (added 2026-09-28) is the fix for both: it routes
+`--scraper-api`'s fetch through a 2Captcha Scraping Browser CDP session
+(their `cdpurl` field on the Scraper API task) instead of their own
+default pool — chaining two 2Captcha products together, so their own
+Scraping Browser solves any captcha it hits before the HTML ever reaches
+this repo's parser, and `--scraper-api-country`/`--scraper-api-profile-id`
+pin the exit country / reuse a profile the same way `scraping_browser_
+connection_url()` already does for `--cdp-endpoint`. It never touches a
+caller-supplied `--cdp-endpoint` — that flag stays ignored in
+`--scraper-api` mode, since an arbitrary CDP session isn't known to
+support this field the way 2Captcha's own does. **Wired and covered by
+`smoke_test.py` (structural + behavioral, with a fake Scraper API
+response), but not yet exercised against a real 2Captcha/shein.com
+session** — see `CHANGELOG.md` and `TESTING.md`.
 
 ### Family flags that don't apply here — and why
 

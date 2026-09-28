@@ -27,12 +27,18 @@ separate host):
     fetch real pages (verified real product markup came back), but it is
     NOT a bypass of shein's own bot-mitigation — the same `/risk/
     challenge` interstitial that a local Playwright browser hits shows up
-    here too, intermittently, and there is no documented parameter to pin
-    the exit country/locale (a clean fetch landed on shein.com's
-    Netherlands locale in one live test, which this repo's parser — tuned
-    for the US/English markup — then read as zero products, not blocked).
-    See engine `run()`'s `--scraper-api` docstring/help text for what this
-    means for a caller.
+    here too, intermittently. By itself it also has no captcha solving at
+    all (there's no live page/DOM here for a solved token to be injected
+    into) and no documented parameter to pin the exit country/locale (a
+    clean fetch landed on shein.com's Netherlands locale in one live test,
+    which this repo's parser — tuned for the US/English markup — then
+    read as zero products, not blocked). `scrape_url()`'s `cdp_url`
+    parameter (below), which every engine's `--scraper-api-cdp` now
+    fills, is the fix for both — chaining this product to 2Captcha's own
+    Scraping Browser instead of their default pool — but that combination
+    is wired, not yet exercised against a real 2Captcha/shein.com session
+    (TESTING.md). See engine `run()`'s `--scraper-api`/`--scraper-api-cdp`
+    docstring/help text for what this means for a caller.
 
 Never construct a competitor's API call from this module.
 """
@@ -264,12 +270,19 @@ class TwoCaptchaClient:
         to match what the API actually accepts, not what its own docs
         say. `cdp_url` (2Captcha's `cdpurl` field) lets a caller point
         this fetch at a CDP session THEY already control instead of
-        2Captcha's own default browser pool — e.g. a `--cdp-endpoint`
-        Scraping Browser session, which does support country pinning,
-        unlike this endpoint on its own. Documented by 2Captcha but NOT
-        yet exercised live by this codebase — a real, but untested,
-        escape hatch for the locale problem described in the module
-        docstring, not a claim that it works."""
+        2Captcha's own default browser pool. Every engine's `--scraper-
+        api-cdp` (added 2026-09-28) fills this with
+        `scraping_browser_connection_url()`'s own output — chaining this
+        product to 2Captcha's OWN Scraping Browser, not a caller-supplied
+        `--cdp-endpoint` (kept separate on purpose: an arbitrary CDP
+        session isn't known to support this field the way 2Captcha's own
+        does) — which is what gets this endpoint real captcha auto-solve
+        (this endpoint alone has none) and the country pinning described
+        in the module docstring. Documented by 2Captcha; a real caller
+        now exists (`--scraper-api-cdp`), but neither this client nor any
+        engine has exercised it against a live 2Captcha/shein.com session
+        yet — confirmed wired, not a confirmed bypass or a confirmed
+        working captcha solve (TESTING.md)."""
         key = self._require_key()
         payload = {
             "task_type": "scrape",

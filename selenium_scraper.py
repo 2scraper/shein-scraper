@@ -125,15 +125,33 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "product from --cdp-endpoint's Scraping Browser API — see scraper_api_client.py's module "
              "docstring. Confirmed live 2026-09-22: real shein.com pages come back, but this is NOT a "
              "confirmed bypass — the same /risk/challenge interstitial this repo already knows about "
-             "shows up here too, intermittently (see --block-retries), and there is no documented way "
-             "to pin the exit country/locale, so a clean (non-blocked) response can still land on a "
-             "non-US shein.com locale this repo's parser doesn't recognise. --max-scrolls/--stall-"
-             "rounds/--scroll-delay/--proxy/--cdp-endpoint/--fingerprint are all IGNORED in this mode "
-             "(a single static fetch has no scroll loop, and brings its own exit IP/device) — set "
-             "together, they log a warning rather than silently doing nothing.",
+             "shows up here too, intermittently (see --block-retries). By itself this mode has no "
+             "captcha solving (a solved token has nothing to inject into — no live page/DOM here) and "
+             "no documented way to pin the exit country/locale, so a clean (non-blocked) response can "
+             "still land on a non-US shein.com locale this repo's parser doesn't recognise. See "
+             "--scraper-api-cdp for the fix to both. --max-scrolls/--stall-rounds/--scroll-delay/"
+             "--proxy/--cdp-endpoint/--fingerprint are all IGNORED in this mode (a single static fetch "
+             "has no scroll loop, and brings its own exit IP/device) — set together, they log a "
+             "warning rather than silently doing nothing.",
     )
     p.add_argument("--scraper-api-timeout", type=int, default=60, help="Seconds 2Captcha itself waits for the target page to finish loading (1-120, their limit)")
     p.add_argument("--scraper-api-url", default=None, help="Override the Scraper API base URL (testing only)")
+    p.add_argument(
+        "--scraper-api-cdp", action="store_true",
+        help="Route --scraper-api's fetch through a 2Captcha Scraping Browser CDP session (their "
+             "'cdpurl' field on the Scraper API task) instead of their own default browser pool — "
+             "chaining two 2Captcha products together, not pointing this at a caller-supplied "
+             "--cdp-endpoint (that flag stays ignored in --scraper-api mode, see its help text: an "
+             "arbitrary CDP session isn't known to support this field the way 2Captcha's own does). "
+             "This is what actually gets --scraper-api real captcha auto-solve and exit-country "
+             "pinning — see scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url and "
+             "scrape_url's own docstrings for exactly what 2Captcha documents. Requires "
+             "--scraper-api. WIRED BUT NOT YET LIVE-TESTED: the underlying 'cdpurl' field is "
+             "documented by 2Captcha but this codebase had never exercised it before this flag "
+             "existed — confirm it live before relying on it (TESTING.md).",
+    )
+    p.add_argument("--scraper-api-country", default=None, help="Exit country for --scraper-api-cdp's Scraping Browser session, e.g. 'us' (ignored without --scraper-api-cdp)")
+    p.add_argument("--scraper-api-profile-id", default=None, help="Reuse a specific Scraping Browser profile id across runs for --scraper-api-cdp, instead of the default pool (ignored without --scraper-api-cdp; see scraping_browser_connection_url's docstring on why reuse is preferred)")
     p.add_argument("--allow-empty", action="store_true")
     p.add_argument("--dump-html", action="store_true")
     p.add_argument("--headless", dest="headless", action="store_true", default=True)
@@ -539,13 +557,18 @@ def scrape_product_page(
 
 def _scrape_via_scraper_api(
     *, args: argparse.Namespace, start_url: str, is_product_page: bool, client: TwoCaptchaClient,
+    cdp_url: Optional[str] = None,
 ) -> Tuple[List[Product], bool, bool, int, bool]:
     """--scraper-api's own fetch path — see playwright_scraper.py's copy of
     this function for the full rationale (identical logic, duplicated per
     engine per this family's own convention — CLAUDE.md §4). One
-    browserless HTTP call, no scroll loop, no live page/DOM."""
+    browserless HTTP call, no scroll loop, no live page/DOM. `cdp_url`,
+    when --scraper-api-cdp set one (see run()), routes this fetch through
+    2Captcha's own Scraping Browser instead of their default pool — real
+    captcha auto-solve and country pinning happen on 2Captcha's side of
+    that session, nothing here needs to change beyond passing it through."""
     try:
-        result = client.scrape_url(start_url, timeout=args.scraper_api_timeout)
+        result = client.scrape_url(start_url, timeout=args.scraper_api_timeout, cdp_url=cdp_url)
     except TwoCaptchaAuthError as exc:
         log.error("Scraper API: %s", exc)
         return [], False, True, 0, False
@@ -597,6 +620,10 @@ def run(args: argparse.Namespace) -> int:
         return EXIT_BAD_USAGE
     args.out = args.out or _default_out(args.format)
 
+    if args.scraper_api_cdp and not args.scraper_api:
+        print("Error: --scraper-api-cdp requires --scraper-api", file=sys.stderr)
+        return EXIT_BAD_USAGE
+
     if args.scraper_api:
         # A whole separate, browserless code path — no Selenium/chromedriver
         # is needed at all here (see CLAUDE.md §6), so none of the checks
@@ -610,12 +637,23 @@ def run(args: argparse.Namespace) -> int:
                 "brings its own exit IP/device via 2Captcha's own infrastructure, see --scraper-api's "
                 "help text."
             )
+        if (args.scraper_api_country or args.scraper_api_profile_id) and not args.scraper_api_cdp:
+            log.warning(
+                "--scraper-api-country/--scraper-api-profile-id are ignored without --scraper-api-cdp "
+                "— there is no Scraping Browser session for them to apply to."
+            )
         client = TwoCaptchaClient(args.twocaptcha_key, api_base=args.captcha_api, scraper_api_base=args.scraper_api_url)
+        cdp_url = None
+        if args.scraper_api_cdp:
+            cdp_url = client.scraping_browser_connection_url(
+                country=args.scraper_api_country, profile_id=args.scraper_api_profile_id,
+            )
         blocked = remote_api_error = False
         merged: List[Product] = []
         for block_attempt in range(args.block_retries + 1):
             merged, blocked, remote_api_error, rounds, scroll_error = _scrape_via_scraper_api(
                 args=args, start_url=start_url, is_product_page=is_product_page, client=client,
+                cdp_url=cdp_url,
             )
             if remote_api_error or not (blocked and not merged):
                 break
