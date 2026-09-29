@@ -18,6 +18,15 @@ codes, and family modules as `stockx-scraper` / `skyscanner-scraper` /
 
 ## Read this before trusting a run
 
+**Live update 2026-09-29:** Playwright completed a real search through a
+US Browser API profile after the user manually passed SHEIN's "I am human"
+step in that profile. The CLI returned `status=complete`, exit `0`, 10
+distinct products, and prices on all 10. Playwright now uses the CDP
+profile's persistent default context, retaining its verified cookies.
+This confirms one listing batch, not uninterrupted cold-profile access or
+pagination beyond the first batch. A fresh unverified profile still
+receives `/risk/challenge?captcha_type=909`.
+
 **Written 2026-09-21 from a real, live browser capture** (a real Chromium
 browser navigating real shein.com pages, not a static fetch or a guess).
 Unlike most of this family's first builds, nearly everything below is
@@ -141,11 +150,13 @@ outright, never silently requested.
 ### Flags
 
 `--url --query --category --sort --max-results --max-scrolls --stall-rounds
---scroll-delay --format --out --retries --retry-delay --proxy --proxy-file
+--scroll-delay --format --out --retries --retry-delay --delay-jitter
+--rate-limit-cooldown --proxy --proxy-file
 --proxy-shuffle --proxy-block-retries --twocaptcha-key --captcha-api
 --solve-captcha --min-score --cdp-endpoint --fingerprint --fp-tags
 --fp-country --scraper-api --scraper-api-timeout --scraper-api-url
---scraper-api-cdp --scraper-api-country --scraper-api-profile-id
+--scraper-api-cdp --scraper-api-country --scraper-api-account-id
+--scraper-api-profile-id
 --allow-empty --dump-html --headless/--headful`
 
 Identical across all three engines — a `smoke_test.py` check asserts the
@@ -159,7 +170,12 @@ below. `--captcha-api` overrides the 2Captcha REST base URL (testing only).
 `--min-score` is 2Captcha's own `minScore` field on a `RecaptchaV3Task`
 request (0.3 default, matching the rest of the family). `--sort` is
 accepted and recorded on the run only — see "Read this before trusting a
-run" above for why it isn't wired into the URL yet.
+run" above for why it isn't wired into the URL yet. **Added 2026-09-29:
+`--delay-jitter`** (default `0.3`, all three engines) multiplies every
+`--scroll-delay`/`--retry-delay`/`--rate-limit-cooldown` wait by a random
+factor in `[1-jitter, 1+jitter]`, so a run's own request timing isn't
+perfectly periodic — set it to `0` for the old exact-delay behavior (e.g.
+reproducible tests).
 
 **`--scraper-api`** (added 2026-09-22) is the odd one out: every other flag
 above still launches a local or `--cdp-endpoint` browser this process
@@ -182,20 +198,37 @@ repo's US/English-tuned parser correctly reports as zero products rather
 than miscounting. By itself this mode also has no captcha solving — a
 solved token has no live page/DOM here to be injected into.
 
-**`--scraper-api-cdp`** (added 2026-09-28) is the fix for both: it routes
-`--scraper-api`'s fetch through a 2Captcha Scraping Browser CDP session
-(their `cdpurl` field on the Scraper API task) instead of their own
-default pool — chaining two 2Captcha products together, so their own
-Scraping Browser solves any captcha it hits before the HTML ever reaches
-this repo's parser, and `--scraper-api-country`/`--scraper-api-profile-id`
-pin the exit country / reuse a profile the same way `scraping_browser_
-connection_url()` already does for `--cdp-endpoint`. It never touches a
-caller-supplied `--cdp-endpoint` — that flag stays ignored in
-`--scraper-api` mode, since an arbitrary CDP session isn't known to
-support this field the way 2Captcha's own does. **Wired and covered by
-`smoke_test.py` (structural + behavioral, with a fake Scraper API
-response), but not yet exercised against a real 2Captcha/shein.com
-session** — see `CHANGELOG.md` and `TESTING.md`.
+**`--scraper-api-cdp`** routes the Scraper API request through a 2Captcha
+Browser API session. The client now asks `POST /browser/connection` for a
+ready-made URL; a regular API key is *not* a browser login/password. Select
+an existing Browser API account with `--scraper-api-account-id` when needed.
+`--scraper-api-country us` requires that account to already be configured
+for US; it does not change the account's proxy or guarantee the exit country
+of a custom proxy. `--scraper-api-profile-id` selects/reuses a profile —
+**added 2026-09-29:** omitting it now logs a warning, since every run
+otherwise gets a fresh profile from 2Captcha's default pool instead of a
+warmed, reused identity (the same principle this repo's own
+`--block-retries`/context-reuse work above is built on). Without a
+matching account, setup fails before a billed scrape request.
+This path remains unverified for a successful SHEIN extraction.
+
+On 2026-09-28 a real run of the old hand-built CDP URL failed with
+`401 Wrong user name format`. A direct Scraper API request using an
+existing saved CDP URL failed with `500 proxy_error`. The current code
+does not claim either route bypasses SHEIN's risk gateway.
+
+When SHEIN redirects to `/risk/action/limit`, the scraper ends that run
+without `--block-retries` or further scrolling. SHEIN's public limit page
+asks visitors to try again after five minutes. By default this stops
+repeated paid requests; it does not automatically wait and resume the
+run. **Added 2026-09-29:** `--rate-limit-cooldown 300` (all three
+engines, default `0` = off) makes the run actually do what that message
+says — wait the given number of seconds (jittered, see
+`--delay-jitter` below) and retry ONCE on the same session before giving
+up for real, instead of just printing the suggestion. Off by default
+because it can add minutes to a single invocation; not yet exercised
+against a real SHEIN rate-limit live with a real ~5 minute wait — see
+CHANGELOG.md.
 
 **If the Scraping Browser session itself fails** (added 2026-09-28) — a
 Scraper API HTTP-level error, not a normal blocked-with-zero-products
@@ -367,8 +400,10 @@ since these are properties of the drivers, not the site):
   gateway is suspected (not confirmed — see above) to use it. One real gap
   remains: the widget-detection patterns in `identify_widget()` are
   UNCONFIRMED best-effort from GeeTest's own public docs, not a real
-  shein.com capture — this incident's actual challenge widget was never
-  reached, only the redirect page.
+  shein.com capture. A 2026-09-29 Browser API Live screenshot did reach
+  SHEIN's `/risk/challenge?captcha_type=909` and showed an "I am human"
+  checkbox. The user completed it manually; this does not identify the
+  widget vendor or verify an automated solver for it.
 - **Captcha token injection on a locally-launched browser is now
   implemented for every widget type this repo recognizes** (added
   2026-09-21, later the same day — `captcha_solver.build_injection_script()`

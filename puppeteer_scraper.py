@@ -23,6 +23,7 @@ otherwise pyppeteer's own default.
 from __future__ import annotations
 
 import argparse
+import random
 import asyncio
 import logging
 import os
@@ -46,7 +47,7 @@ else:
 import env_config
 import shein_parser as sp
 from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
-from output_writer import EXIT_BAD_USAGE, EXIT_CRASH, Product, finish_run, sku_key as _sku_key
+from output_writer import EXIT_BAD_USAGE, EXIT_CRASH, EXIT_REMOTE_API_ERROR, Product, finish_run, sku_key as _sku_key
 from fingerprint_client import fetch_fingerprint, refuse_if_cdp, user_agent_from
 from proxy_pool import Proxy, ProxyPool, ProxyParseError, is_proxy_dead_error, load_proxies, redact_credentials
 from scraper_api_client import TwoCaptchaAuthError, TwoCaptchaClient, TwoCaptchaError
@@ -67,6 +68,16 @@ def _positive_int(value: str) -> int:
     return ivalue
 
 
+def _jittered_delay(base_seconds: float, jitter: float) -> float:
+    """Multiply base_seconds by a random factor in [1-jitter, 1+jitter] so
+    repeated waits (scroll pauses, retry backoff, a rate-limit cooldown)
+    aren't perfectly periodic — an easy signal for a site's own rate/
+    bot-detection heuristics to key off of. jitter<=0 disables this (e.g.
+    for reproducible tests); never returns a negative delay."""
+    if base_seconds <= 0 or jitter <= 0:
+        return base_seconds
+    return max(0.0, base_seconds * random.uniform(1 - jitter, 1 + jitter))
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="shein.com fashion listing scraper — pyppeteer (Puppeteer) engine",
@@ -84,6 +95,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default=None)
     p.add_argument("--retries", type=int, default=2)
     p.add_argument("--retry-delay", type=float, default=3.0)
+    p.add_argument("--delay-jitter", type=float, default=0.3, help="Relative +/-jitter applied to --scroll-delay/--retry-delay/--rate-limit-cooldown so repeated waits are not perfectly periodic (0 disables, e.g. for reproducible tests)")
+    p.add_argument("--rate-limit-cooldown", type=float, default=0.0, help="On SHEIN's own rate-limit gate (/risk/action/limit), wait this many seconds and retry ONCE on the same session before giving up, honoring the ~5 minute cooldown observed live (see TESTING.md). Off (0) by default — this can make a single invocation take minutes; consider e.g. 300 for unattended/scheduled runs.")
     p.add_argument(
         "--block-retries", type=int, default=2,
         help="On a blocked, zero-product outcome, retry this many extra times before giving up — "
@@ -132,8 +145,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "chaining two 2Captcha products together, not pointing this at a caller-supplied "
              "--cdp-endpoint (that flag stays ignored in --scraper-api mode, see its help text: an "
              "arbitrary CDP session isn't known to support this field the way 2Captcha's own does). "
-             "This is what actually gets --scraper-api real captcha auto-solve and exit-country "
-             "pinning — see scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url and "
+             "This selects an existing country-configured Browser API account and may enable "
+             "its captcha auto-solve — see scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url and "
              "scrape_url's own docstrings for exactly what 2Captcha documents. Requires "
              "--scraper-api. WIRED BUT NOT YET LIVE-TESTED: the underlying 'cdpurl' field is "
              "documented by 2Captcha but this codebase had never exercised it before this flag "
@@ -141,9 +154,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "Browser session itself fails (a Scraper API HTTP error, not a normal blocked-with-"
              "zero-products outcome), this run automatically falls back to --scraper-api's plain "
              "default pool once, logged loudly, rather than giving up outright — losing country/"
-             "profile pinning and 2Captcha's own captcha auto-solve for the rest of that run.",
+             "profile selection and 2Captcha's own captcha auto-solve for the rest of that run.",
     )
-    p.add_argument("--scraper-api-country", default=None, help="Exit country for --scraper-api-cdp's Scraping Browser session, e.g. 'us' (ignored without --scraper-api-cdp)")
+    p.add_argument("--scraper-api-country", default=None, help="Require an existing Browser API account configured for this country, e.g. us; does not change its proxy country (ignored without --scraper-api-cdp)")
+    p.add_argument("--scraper-api-account-id", type=_positive_int, default=None, help="Existing 2Captcha Browser API account ID for --scraper-api-cdp; required when multiple accounts match the requested country")
     p.add_argument("--scraper-api-profile-id", default=None, help="Reuse a specific Scraping Browser profile id across runs for --scraper-api-cdp, instead of the default pool (ignored without --scraper-api-cdp; see scraping_browser_connection_url's docstring on why reuse is preferred)")
     p.add_argument("--allow-empty", action="store_true")
     p.add_argument("--dump-html", action="store_true")
@@ -309,7 +323,7 @@ async def scrape_search(
             else:
                 log.warning("Navigation attempt %d/%d failed: %s", attempt + 1, args.retries + 1, message)
             if attempt < args.retries:
-                await asyncio.sleep(args.retry_delay)
+                await asyncio.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
 
     if last_error is not None:
         await browser.close()
@@ -320,6 +334,8 @@ async def scrape_search(
     # TWO distinct endpoints now, a captcha-shaped /risk/challenge and a
     # rate-limit /risk/action/limit): both silently redirect, no >=400
     # status involved — the current URL is the most direct signal.
+    if "/risk/action/limit" in page.url:
+        args._rate_limited = True
     if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         log.warning("Redirected to SHEIN's own risk gateway (%s) — treating as blocked.", page.url)
         blocked = True
@@ -336,6 +352,8 @@ async def scrape_search(
 
     for round_num in range(args.max_scrolls + 1):
         rounds = round_num
+        if args._rate_limited:
+            break
         html = await page.content()
         try:
             raw_data = await page.evaluate("() => window.gbRawData || null")
@@ -421,7 +439,7 @@ async def scrape_search(
             log.warning("Scroll failed, stopping pagination early: %s", exc)
             scroll_error = True
             break
-        await asyncio.sleep(args.scroll_delay)
+        await asyncio.sleep(_jittered_delay(args.scroll_delay, args.delay_jitter))
 
     final_html = await page.content()
     try:
@@ -484,12 +502,14 @@ async def scrape_product_page(
             last_error = str(exc)
             log.warning("Navigation attempt %d/%d failed: %s", attempt + 1, args.retries + 1, last_error)
             if attempt < args.retries:
-                await asyncio.sleep(args.retry_delay)
+                await asyncio.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
 
     if last_error is not None:
         await browser.close()
         return [], False, True, 0, False
 
+    if "/risk/action/limit" in page.url:
+        args._rate_limited = True
     if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         blocked = True
     if status is not None and status >= 400:
@@ -542,7 +562,7 @@ def _scrape_via_scraper_api(
     needs `await`), no scroll loop, no live page/DOM. `cdp_url`, when
     --scraper-api-cdp set one (see run()), routes this fetch through
     2Captcha's own Scraping Browser instead of their default pool — real
-    captcha auto-solve and country pinning happen on 2Captcha's side of
+    captcha auto-solve and the selected account's proxy settings apply on 2Captcha's side of
     that session, nothing here needs to change beyond passing it through."""
     try:
         result = client.scrape_url(start_url, timeout=args.scraper_api_timeout, cdp_url=cdp_url)
@@ -554,6 +574,8 @@ def _scrape_via_scraper_api(
         return [], False, True, 0, False
 
     html = result.body
+    if "/risk/action/limit" in html:
+        args._rate_limited = True
     blocked = False
     if result.target_status is not None and result.target_status >= 400:
         log.warning("Scraper API: target page returned HTTP %d — treating as blocked.", result.target_status)
@@ -584,6 +606,8 @@ def _scrape_via_scraper_api(
 
 
 async def run(args: argparse.Namespace) -> int:
+    args._rate_limited = False
+    args._cooldown_used = False
     started_at = time.time()
     start_url, is_product_page = _resolve_start_url(args)
     if not start_url:
@@ -614,17 +638,29 @@ async def run(args: argparse.Namespace) -> int:
                 "brings its own exit IP/device via 2Captcha's own infrastructure, see --scraper-api's "
                 "help text."
             )
-        if (args.scraper_api_country or args.scraper_api_profile_id) and not args.scraper_api_cdp:
+        if (args.scraper_api_country or args.scraper_api_profile_id or args.scraper_api_account_id) and not args.scraper_api_cdp:
             log.warning(
-                "--scraper-api-country/--scraper-api-profile-id are ignored without --scraper-api-cdp "
+                "--scraper-api-country/--scraper-api-account-id/--scraper-api-profile-id are ignored without --scraper-api-cdp "
                 "— there is no Scraping Browser session for them to apply to."
             )
         client = TwoCaptchaClient(args.twocaptcha_key, api_base=args.captcha_api, scraper_api_base=args.scraper_api_url)
         cdp_url = None
-        if args.scraper_api_cdp:
-            cdp_url = client.scraping_browser_connection_url(
-                country=args.scraper_api_country, profile_id=args.scraper_api_profile_id,
+        if args.scraper_api_cdp and not args.scraper_api_profile_id:
+            log.warning(
+                "--scraper-api-cdp without --scraper-api-profile-id — each run gets a fresh "
+                "profile from 2Captcha's default pool instead of a warmed, reused identity. "
+                "Pass --scraper-api-profile-id to reuse one across runs (see "
+                "scraping_browser_connection_url's docstring and README/TESTING.md)."
             )
+        if args.scraper_api_cdp:
+            try:
+                cdp_url = client.scraping_browser_connection_url(
+                    country=args.scraper_api_country, profile_id=args.scraper_api_profile_id,
+                    account_id=args.scraper_api_account_id,
+                )
+            except TwoCaptchaError as exc:
+                log.error("Scraping Browser connection setup failed: %s", exc)
+                return EXIT_REMOTE_API_ERROR
         blocked = remote_api_error = False
         merged: List[Product] = []
         cdp_fallback_used = False
@@ -640,7 +676,7 @@ async def run(args: argparse.Namespace) -> int:
                     "--scraper-api-cdp's Scraping Browser session failed — falling back to "
                     "--scraper-api's plain default pool for the rest of this run instead of "
                     "giving up outright. This run no longer has --scraper-api-cdp's country/"
-                    "profile pinning or 2Captcha's own captcha auto-solve."
+                    "profile selection or 2Captcha's own captcha auto-solve."
                 )
                 cdp_fallback_used = True
                 cdp_url = None
@@ -648,6 +684,21 @@ async def run(args: argparse.Namespace) -> int:
                     args=args, start_url=start_url, is_product_page=is_product_page, client=client,
                     cdp_url=cdp_url,
                 )
+            if args._rate_limited:
+                if args.rate_limit_cooldown > 0 and not args._cooldown_used:
+                    args._cooldown_used = True
+                    args._rate_limited = False
+                    _wait_s = _jittered_delay(args.rate_limit_cooldown, args.delay_jitter)
+                    log.warning(
+                        "SHEIN rate limit reached — waiting %.0fs (opt-in --rate-limit-cooldown, "
+                        "honoring the ~5 minute cooldown observed live) before ONE retry on the "
+                        "same session, instead of giving up immediately.",
+                        _wait_s,
+                    )
+                    await asyncio.sleep(_wait_s)
+                    continue
+                log.warning("SHEIN rate limit reached; stopping this run without block retries. Try again after at least five minutes.")
+                break
             if remote_api_error or not (blocked and not merged):
                 break
             if block_attempt < args.block_retries:
@@ -656,7 +707,7 @@ async def run(args: argparse.Namespace) -> int:
                     "fetch before giving up.",
                     block_attempt + 1, args.block_retries + 1,
                 )
-                await asyncio.sleep(args.retry_delay)
+                await asyncio.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
         price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
         return finish_run(
             products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
@@ -705,6 +756,21 @@ async def run(args: argparse.Namespace) -> int:
                 args=args, start_url=start_url, proxy_pool=proxy_pool, client=client, autosolve=autosolve,
                 user_agent=user_agent,
             )
+            if args._rate_limited:
+                if args.rate_limit_cooldown > 0 and not args._cooldown_used:
+                    args._cooldown_used = True
+                    args._rate_limited = False
+                    _wait_s = _jittered_delay(args.rate_limit_cooldown, args.delay_jitter)
+                    log.warning(
+                        "SHEIN rate limit reached — waiting %.0fs (opt-in --rate-limit-cooldown, "
+                        "honoring the ~5 minute cooldown observed live) before ONE retry on the "
+                        "same session, instead of giving up immediately.",
+                        _wait_s,
+                    )
+                    await asyncio.sleep(_wait_s)
+                    continue
+                log.warning("SHEIN rate limit reached; stopping this run without block retries. Try again after at least five minutes.")
+                break
             if not (blocked and not merged):
                 break
             if block_attempt < args.block_retries:
@@ -712,7 +778,7 @@ async def run(args: argparse.Namespace) -> int:
                     "Blocked with zero products (attempt %d/%d) — retrying before giving up.",
                     block_attempt + 1, args.block_retries + 1,
                 )
-                await asyncio.sleep(args.retry_delay)
+                await asyncio.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
         price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
     except Exception:
         log.exception("Unhandled error — this is a crash, not a normal blocked/empty run")

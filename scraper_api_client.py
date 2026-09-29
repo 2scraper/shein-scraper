@@ -211,17 +211,58 @@ class TwoCaptchaClient:
     # Scraping Browser API — one live CDP connection per profile
     # ----------------------------------------------------------------- #
     def scraping_browser_connection_url(
-        self, *, country: Optional[str] = None, profile_id: Optional[str] = None
+        self, *, country: Optional[str] = None, profile_id: Optional[str] = None,
+        account_id: Optional[int] = None,
     ) -> str:
-        """Returns a `ws://...@cb.2captcha.com:9222` endpoint. Reuse
-        `profile_id` across runs rather than minting a fresh one every
-        time — profiles are capped per account and each allows exactly one
-        live connection."""
+        """Ask Browser API for a ready-made CDP URL with its own credentials.
+
+        The regular API key is not the browser login or password. Country is
+        a selection constraint on an existing account, not a country switch:
+        changing a saved proxy/account is a separate Browser API operation.
+        """
         key = self._require_key()
-        login = key  # 2Captcha's Scraping Browser auths the login on the key
-        cc = f"-country-{country}" if country else ""
-        pid = f"-pid-{profile_id}" if profile_id else ""
-        return f"ws://{login}-zone-scraping_browser{cc}{pid}:{key}@cb.2captcha.com:9222"
+        try:
+            response = requests.get(
+                f"{self.api_base}/browser/accounts", params={"key": key}, timeout=self.timeout,
+            )
+            response.raise_for_status()
+            listing = response.json()
+        except (requests.exceptions.RequestException, ValueError) as exc:
+            raise TwoCaptchaError(f"Browser API account lookup failed ({type(exc).__name__})") from None
+        if listing.get("status") != "OK":
+            raise TwoCaptchaError(f"Browser API account lookup failed: {listing.get('errorCode', 'unknown error')}")
+        raw_accounts = listing.get("data") or []
+        accounts = list(raw_accounts.values()) if isinstance(raw_accounts, dict) else raw_accounts
+        accounts = [a for a in accounts if isinstance(a, dict)]
+        if account_id is not None:
+            accounts = [a for a in accounts if str(a.get("id")) == str(account_id)]
+        if country:
+            accounts = [a for a in accounts if (a.get("country") or "").lower() == country.lower()]
+        if len(accounts) != 1:
+            raise TwoCaptchaError(
+                "Browser API needs exactly one matching account; configure an account for the "
+                "requested country and select it with --scraper-api-account-id"
+            )
+        selected_id = accounts[0].get("id")
+        payload = {"key": key, "accountId": selected_id}
+        if profile_id:
+            payload["profileId"] = profile_id
+        try:
+            response = requests.post(
+                f"{self.api_base}/browser/connection", json=payload, timeout=self.timeout,
+            )
+            response.raise_for_status()
+            connection = response.json()
+        except (requests.exceptions.RequestException, ValueError) as exc:
+            raise TwoCaptchaError(f"Browser API connection lookup failed ({type(exc).__name__})") from None
+        if connection.get("status") != "OK" or not connection.get("connectionUri"):
+            raise TwoCaptchaError(
+                f"Browser API connection lookup failed: {connection.get('errorCode', 'missing connectionUri')}"
+            )
+        uri = connection["connectionUri"]
+        if country and f"-country-{country.lower()}" not in uri.lower():
+            raise TwoCaptchaError("Browser API selected a profile with a different country")
+        return uri
 
     # ----------------------------------------------------------------- #
     # Fingerprint API

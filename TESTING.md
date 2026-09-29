@@ -1,32 +1,15 @@
 # Testing with real credentials and the live site
 
-**Written 2026-09-21**: unlike most of this family's first builds, the site
-knowledge in `shein_parser.py` already comes from a real, live browser
-capture (search/category via `window.gbRawData`, product-detail via
-schema.org `ProductGroup` JSON-LD, and the `/risk/challenge` bot-mitigation
-incident — see README "Read this before trusting a run"). **Updated later
-the same day**: `shein_parser.parse_search_results()` has now also been run
-against a second, fresh real capture end-to-end through
-`output_writer.finish_run()` — 10/10 real products, `status=complete`, exit
-`0` (see `CHANGELOG.md` and `tests/fixtures/shein_search_live_dress_
-20260921.json`). **What has still NOT happened is a live run of this
-repo's own engine scripts** — both real captures so far came from a
-browser-rendering tool driving real pages directly, not from
-`playwright_scraper.py`/`selenium_scraper.py`/`puppeteer_scraper.py`
-themselves. Attempting that live engine run surfaced a concrete blocker,
-not just an untried step: **the environments this repo has been built and
-synced to both currently block the network calls an engine run needs** —
-a plain HTTPS request to `us.shein.com` gets `403 blocked-by-allowlist`
-from the egress proxy in both the cloud build environment and the linked
-device's own shell, and `playwright install chromium` fails the same way
-trying to download the browser binary from `cdn.playwright.dev`. This is
-an environment/network-policy gap, not a bug in the scraper — the fix is
-either widening the relevant allowlist (ask whoever manages it to add
-`us.shein.com`, `cdn.playwright.dev`, and `googlechromelabs.github.io`) or
-running the commands below from a machine that isn't behind that policy.
-Closing this gap is this repo's single highest-value remaining check.
+**Updated 2026-09-29:** this repository's own Playwright engine has now
+completed a live search through a US Browser API profile after a manual
+"I am human" verification in that profile. The run returned 10 distinct
+products with prices, `status=complete`, exit `0`. The earlier 2026-09-21
+network-allowlist blocker described in this document is no longer present
+on the machine used for this run. A fresh unverified profile is still
+sent to `/risk/challenge`; the successful run demonstrates persistence of
+the manually verified profile, not automatic bypass of that challenge.
 
-Still requiring live verification: all three engines end-to-end, whether
+Still requiring live verification: Selenium and Puppeteer end-to-end, whether
 scroll-driven pagination actually grows `window.gbRawData` past its first
 batch, the DOM fallback selectors, and `--sort`'s real query-parameter
 shape. Offline checks (`smoke_test.py`) remain useful, but do not
@@ -145,10 +128,10 @@ print('balance: \$%.2f' % c.get_balance())
 python3 playwright_scraper.py --query "summer dress" --out /tmp/shein_cdp.json
 ```
 
-Worth specifically testing here: whether a Scraping Browser API session
-(a different device identity/IP than whatever tripped `/risk/challenge` in
-the original capture) avoids that redirect entirely — that would confirm
-the per-context risk-scoring read in the README, rather than just imply it.
+An unverified Browser API profile did receive `/risk/challenge?captcha_type=909`
+in a live run. The user passed its "I am human" step in Browser API Live;
+the same profile then returned 10 real products through the Playwright CLI.
+Reusing the profile's default context is required to retain those cookies.
 
 **Gotcha**, same as the rest of the family: if `.env` has BOTH
 `SHEIN_CDP_ENDPOINT` and `SHEIN_PROXY` set, the code ignores `SHEIN_PROXY`
@@ -168,18 +151,15 @@ python3 playwright_scraper.py --query "summer dress" --out /tmp/shein_proxy.json
 ```bash
 python3 playwright_scraper.py --query "summer dress" --scraper-api --out /tmp/shein_scraper_api.json
 python3 playwright_scraper.py --query "summer dress" --scraper-api --scraper-api-cdp \
-    --scraper-api-country us --out /tmp/shein_scraper_api_cdp.json
+    --scraper-api-country us --scraper-api-account-id YOUR_EXISTING_US_ACCOUNT_ID \
+    --out /tmp/shein_scraper_api_cdp.json
 ```
 
-Worth specifically testing here, neither yet exercised against a real
-2Captcha/shein.com session: whether `--scraper-api-cdp` actually lands on
-the `--scraper-api-country` storefront requested (the locale problem
-plain `--scraper-api` has — see README/CHANGELOG), and whether a captcha
-shown during this fetch is actually solved on 2Captcha's own side of that
-Scraping Browser session before the HTML comes back at all. `smoke_test.py`
-only proves the `cdpurl` gets built correctly and reaches
-`scraper_api_client.scrape_url` — against a fake response, not a real
-2Captcha task.
+Create/configure a US Browser API account before this run. The country
+flag checks the account's saved country; it does not change its proxy.
+`smoke_test.py` verifies Browser API account selection and retrieval of a
+ready-made connection URL with fake responses. A successful end-to-end
+SHEIN extraction over this route remains unverified.
 
 **The automatic fallback** (added 2026-09-28: if the Scraping Browser
 session itself fails, one automatic retry without `cdp_url`) is covered
@@ -229,7 +209,7 @@ Then, in the GitHub repo's Settings:
   `shein_parser.py`'s module docstring.
 - Whether `/risk/challenge` recurs, and under what conditions (proxy?
   fingerprint? plain local run?), documented one way or the other.
-- Step 8's two open questions (`--scraper-api-cdp` locale pinning and
+- Step 8's two open questions (`--scraper-api-cdp` locale selection and
   actual captcha auto-solve) answered one way or the other, with README/
   CHANGELOG updated from "wired, not yet exercised live" to whatever was
   actually observed.

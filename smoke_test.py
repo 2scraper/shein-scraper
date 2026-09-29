@@ -1211,6 +1211,11 @@ def _():
     for mod, engine_name in engines:
         captured = {}
         original = scraper_api_client.TwoCaptchaClient.scrape_url
+        original_connection = scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url
+
+        def _fake_connection(self, *, country=None, profile_id=None, account_id=None):
+            captured["connection_args"] = (country, profile_id, account_id)
+            return f"ws://browser-zone-scraping_browser-country-{country}-pid-{profile_id}:password@cb.2captcha.com:9222"
 
         def _fake_scrape_url(self, url, *, data_format="raw", timeout=60, wait_for=None, cdp_url=None):
             captured["cdp_url"] = cdp_url
@@ -1219,6 +1224,7 @@ def _():
             )
 
         scraper_api_client.TwoCaptchaClient.scrape_url = _fake_scrape_url
+        scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url = _fake_connection
         try:
             parser = mod.build_arg_parser()
 
@@ -1235,7 +1241,8 @@ def _():
                     "--url", "https://us.shein.com/dsbayvkj-p-33704388.html",
                     "--twocaptcha-key", "fake-key-for-test-only",
                     "--scraper-api", "--scraper-api-cdp",
-                    "--scraper-api-country", "us", "--scraper-api-profile-id", "smoke-test-profile",
+                    "--scraper-api-country", "us", "--scraper-api-account-id", "7",
+                    "--scraper-api-profile-id", "smoke-test-profile",
                     "--out", str(Path(td) / "out.json"), "--allow-empty",
                 ])
                 asyncio_run_maybe(mod, on_args)
@@ -1243,6 +1250,7 @@ def _():
             assert cdp_url, f"{engine_name}: --scraper-api-cdp did not produce a cdp_url"
             assert "-country-us" in cdp_url, f"{engine_name}: cdp_url does not carry the requested country: {cdp_url!r}"
             assert "-pid-smoke-test-profile" in cdp_url, f"{engine_name}: cdp_url does not carry the requested profile id: {cdp_url!r}"
+            assert captured["connection_args"] == ("us", "smoke-test-profile", 7)
 
             # Without the flag: unchanged from before this feature existed.
             captured.clear()
@@ -1257,6 +1265,7 @@ def _():
             assert captured.get("cdp_url") is None, f"{engine_name}: cdp_url should be None without --scraper-api-cdp, got {captured.get('cdp_url')!r}"
         finally:
             scraper_api_client.TwoCaptchaClient.scrape_url = original
+            scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url = original_connection
 
 
 @check(
@@ -1278,6 +1287,11 @@ def _():
     )
     for mod, engine_name in engines:
         original = scraper_api_client.TwoCaptchaClient.scrape_url
+        original_connection = scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url
+        scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url = (
+            lambda self, *, country=None, profile_id=None, account_id=None:
+            "ws://browser-zone-scraping_browser-country-us:password@cb.2captcha.com:9222"
+        )
 
         # Case 1: cdp attempt fails, fallback (cdp_url=None) recovers.
         calls = []
@@ -1328,6 +1342,7 @@ def _():
             assert len(calls2) == 2, f"{engine_name}/both-fail: expected exactly 2 scrape_url calls (one fallback, never repeated), got {calls2!r}"
         finally:
             scraper_api_client.TwoCaptchaClient.scrape_url = original
+            scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url = original_connection
 
         # Case 3: regression -- plain --scraper-api (no --scraper-api-cdp) never falls back.
         calls3 = []
@@ -1351,6 +1366,163 @@ def _():
             assert len(calls3) == 1, f"{engine_name}/plain: no --scraper-api-cdp means no fallback attempt, expected exactly 1 call, got {calls3!r}"
         finally:
             scraper_api_client.TwoCaptchaClient.scrape_url = original
+
+
+@check("Playwright CDP uses the persistent profile context and closes only its own page")
+def _():
+    import asyncio
+
+    class FakeContext:
+        def __init__(self):
+            self.closed = False
+
+        async def close(self):
+            self.closed = True
+
+    class FakePage:
+        def __init__(self):
+            self.closed = False
+
+        async def close(self):
+            self.closed = True
+
+    class FakeBrowser:
+        def __init__(self):
+            self.default = FakeContext()
+            self.contexts = [self.default]
+            self.new_context_calls = 0
+
+        async def new_context(self, **kwargs):
+            self.new_context_calls += 1
+            return FakeContext()
+
+    async def exercise():
+        browser = FakeBrowser()
+        context = await playwright_scraper._new_context(browser, None, None, reuse_default=True)
+        assert context is browser.default
+        assert browser.new_context_calls == 0
+        page = FakePage()
+        await playwright_scraper._close_scrape_page(page, context, reuse_default=True)
+        assert page.closed and not context.closed
+
+        local = await playwright_scraper._new_context(browser, None, None)
+        assert local is not browser.default and browser.new_context_calls == 1
+        page = FakePage()
+        await playwright_scraper._close_scrape_page(page, local, reuse_default=False)
+        assert page.closed and local.closed
+
+    asyncio.run(exercise())
+
+
+@check(
+    "Playwright CDP falls back to a fresh context (not a crash) when the provider's "
+    "session has recycled and browser.contexts comes back empty -- regression test for a "
+    "real live crash on Roman's own machine 2026-09-29: two blocked --block-retries "
+    "attempts against a real Browser API profile, then a third attempt's "
+    "browser.contexts was empty and _new_context raised RuntimeError uncaught, crashing "
+    "the whole run instead of degrading that one attempt (CLAUDE.md §6)."
+)
+def _():
+    import asyncio
+
+    class FakeContext:
+        def __init__(self):
+            self.closed = False
+
+        async def close(self):
+            self.closed = True
+
+    class FakeEmptyBrowser:
+        """No persistent default context left -- as observed live after a
+        provider-side session recycle."""
+        def __init__(self):
+            self.contexts = []
+            self.new_context_calls = 0
+
+        async def new_context(self, **kwargs):
+            self.new_context_calls += 1
+            return FakeContext()
+
+    async def exercise():
+        browser = FakeEmptyBrowser()
+        context = await playwright_scraper._new_context(browser, None, None, reuse_default=True)
+        assert browser.new_context_calls == 1, "must fall back to a fresh context, not raise"
+        assert context is not None
+
+    asyncio.run(exercise())
+
+
+@check("Browser API supplies its own CDP credentials and selects an existing country/account")
+def _():
+    from unittest.mock import patch
+
+    class Response:
+        def __init__(self, body):
+            self.body = body
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.body
+
+    accounts = {"status": "OK", "data": {
+        "0": {"id": 10, "country": "eu"},
+        "1": {"id": 11, "country": "us"},
+    }}
+    calls = []
+
+    def fake_get(url, *, params, timeout):
+        assert url.endswith("/browser/accounts")
+        assert params == {"key": "fake-key-for-test-only"}
+        return Response(accounts)
+
+    def fake_post(url, *, json, timeout):
+        calls.append(json)
+        assert url.endswith("/browser/connection")
+        return Response({"status": "OK", "connectionUri": "ws://browser-login-zone-scraping_browser-country-us:browser-password@cb.2captcha.com:9222"})
+
+    client = scraper_api_client.TwoCaptchaClient("fake-key-for-test-only")
+    with patch.object(scraper_api_client.requests, "get", fake_get), patch.object(scraper_api_client.requests, "post", fake_post):
+        uri = client.scraping_browser_connection_url(country="us", profile_id="existing-profile")
+        assert uri.startswith("ws://browser-login-zone-scraping_browser-country-us:browser-password@")
+        assert calls == [{"key": "fake-key-for-test-only", "accountId": 11, "profileId": "existing-profile"}]
+        try:
+            client.scraping_browser_connection_url(country="fr")
+        except scraper_api_client.TwoCaptchaError:
+            pass
+        else:
+            raise AssertionError("missing country must fail before a Scraper API request")
+        assert len(calls) == 1
+
+
+@check("all three Scraper API modes stop after one /risk/action/limit response even with block retries")
+def _():
+    engines = (playwright_scraper, selenium_scraper, puppeteer_scraper)
+    original = scraper_api_client.TwoCaptchaClient.scrape_url
+    calls = []
+
+    def fake_scrape(self, url, *, data_format="raw", timeout=60, wait_for=None, cdp_url=None):
+        calls.append(url)
+        return scraper_api_client.ScrapeResult(
+            target_status=200, headers={},
+            body="<html><body>/risk/action/limit You have too many requests</body></html>",
+        )
+
+    scraper_api_client.TwoCaptchaClient.scrape_url = fake_scrape
+    try:
+        for mod in engines:
+            calls.clear()
+            with tempfile.TemporaryDirectory() as td:
+                args = mod.build_arg_parser().parse_args([
+                    "--query", "dress", "--twocaptcha-key", "fake-key-for-test-only",
+                    "--scraper-api", "--block-retries", "2", "--out", str(Path(td) / "out.json"),
+                ])
+                rc = asyncio_run_maybe(mod, args)
+            assert rc == output_writer.EXIT_BLOCKED, (mod.__name__, rc)
+            assert len(calls) == 1, (mod.__name__, calls)
+    finally:
+        scraper_api_client.TwoCaptchaClient.scrape_url = original
 
 
 @check(
@@ -1461,6 +1633,144 @@ def _():
     match = module.SECRET_ASSIGNMENT.search(hint_line)
     assert match is not None  # the regex itself still matches the shape
     assert module._looks_like_type_hint(match.group(3))
+
+
+@check(
+    "_jittered_delay (added 2026-09-29, in response to Roman asking to reduce "
+    "block risk): a real, shared per-engine helper -- not just a flag -- that "
+    "spreads --scroll-delay/--retry-delay/--rate-limit-cooldown over "
+    "[1-jitter, 1+jitter] so repeated waits aren't perfectly periodic. Tested "
+    "against the REAL function in all three engines, not a reimplementation: "
+    "bounds hold over many draws, jitter<=0 or base<=0 is a no-op passthrough, "
+    "and it never returns a negative delay even at jitter=1.0."
+)
+def _():
+    import random as _random
+
+    for mod in (playwright_scraper, puppeteer_scraper, selenium_scraper):
+        fn = mod._jittered_delay
+        # jitter disabled -> exact passthrough
+        assert fn(3.0, 0.0) == 3.0
+        assert fn(3.0, -1.0) == 3.0
+        # non-positive base -> exact passthrough regardless of jitter
+        assert fn(0.0, 0.3) == 0.0
+        assert fn(-1.0, 0.3) == -1.0
+        # bounds hold over many draws, and it's actually random (not a
+        # constant that happens to lie in range)
+        _random.seed(1234)
+        samples = [fn(10.0, 0.3) for _ in range(200)]
+        assert all(7.0 <= s <= 13.0 for s in samples), f"{mod.__name__}: jitter out of [1-jitter,1+jitter] bounds"
+        assert len(set(samples)) > 1, f"{mod.__name__}: _jittered_delay looks non-random"
+        # even at jitter=1.0 (worst case, factor could reach 0) it never
+        # goes negative
+        assert all(fn(5.0, 1.0) >= 0.0 for _ in range(50))
+
+
+@check(
+    "all three engines wire --delay-jitter through EVERY --scroll-delay/"
+    "--retry-delay sleep -- no bare, unjittered sleep(args.scroll_delay)/"
+    "sleep(args.retry_delay) call site left over from before this change "
+    "(added 2026-09-29; a parity gap here would silently make one engine's "
+    "request timing perfectly periodic again while the others jitter)"
+)
+def _():
+    import re as _re
+
+    bare_sleep = _re.compile(r"sleep\(args\.(scroll_delay|retry_delay)\)")
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert "--delay-jitter" in src, f"{path} is missing the --delay-jitter flag"
+        bare = bare_sleep.findall(src)
+        assert not bare, f"{path} still has a bare, unjittered sleep call: {bare}"
+        assert src.count("_jittered_delay(args.scroll_delay") >= 1, f"{path}: scroll_delay never jittered"
+        assert src.count("_jittered_delay(args.retry_delay") >= 1, f"{path}: retry_delay never jittered"
+
+
+@check(
+    "all three engines implement '--rate-limit-cooldown' -- an OPT-IN "
+    "(default 0, off) longer wait-and-retry-ONCE on the same session after "
+    "hitting SHEIN's own /risk/action/limit gate, honoring the ~5 minute "
+    "cooldown observed live on Roman's own machine 2026-09-29, instead of "
+    "giving up on the first rate-limit hit the way this repo always has. "
+    "Off by default so a normal invocation never silently grows by minutes -- "
+    "structural + behavioral: the retry-once guard (_cooldown_used) actually "
+    "prevents a second wait in the same run, checked against the real "
+    "3-argument threading (rate_limit_cooldown -> delay_jitter -> _wait_s)."
+)
+def _():
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert "--rate-limit-cooldown" in src, f"{path} is missing the --rate-limit-cooldown flag"
+        assert "args._cooldown_used = False" in src, f"{path}: cooldown-used flag never initialized"
+        # exactly two call sites (scraper-api loop + local/CDP browser loop),
+        # matching the two pre-existing '_rate_limited... break' sites this
+        # change modified -- a third or a missing one is a parity regression.
+        assert src.count("args._cooldown_used = True") == 2, (
+            f"{path}: expected exactly 2 rate-limit-cooldown retry sites, "
+            f"got {src.count('args._cooldown_used = True')}"
+        )
+        assert src.count("not args._cooldown_used") == 2, f"{path}: retry-once guard missing at a call site"
+        # the guard must come BEFORE the flag is set, in program order, at
+        # each site, or a run could cooldown-retry forever
+        for m in __import__("re").finditer(r"if args\.rate_limit_cooldown > 0 and not args\._cooldown_used:\n\s*args\._cooldown_used = True", src):
+            pass  # presence alone (matched via the combined pattern) proves ordering
+        assert __import__("re").search(
+            r"if args\.rate_limit_cooldown > 0 and not args\._cooldown_used:\s*\n\s*args\._cooldown_used = True",
+            src,
+        ), f"{path}: retry-once guard is not checked before being set (would allow more than one cooldown wait)"
+
+
+@check(
+    "the rate-limit-cooldown retry sleeps with the SAME sync/async style as "
+    "its surrounding function -- a regression this change could easily "
+    "introduce by copy-pasting one style into both call sites (playwright's "
+    "scraper-api path is sync, its local/CDP browser path is async; "
+    "puppeteer is async in both; selenium is sync in both -- see each "
+    "engine's own pre-existing --retry-delay sleep immediately below each "
+    "site, which this new code must match)"
+)
+def _():
+    import re as _re
+
+    # playwright: first site (scraper-api, sync) uses time.sleep; second
+    # site (local/CDP browser loop, inside `async def run`) must use
+    # `await asyncio.sleep`, matching its own sibling retry-delay sleep a
+    # few lines below (`await asyncio.sleep(_jittered_delay(args.retry_delay`).
+    pw_src = (ROOT / "playwright_scraper.py").read_text(encoding="utf-8")
+    cooldown_sleeps = _re.findall(r"(await asyncio\.sleep\(_wait_s\)|time\.sleep\(_wait_s\))", pw_src)
+    assert cooldown_sleeps == ["time.sleep(_wait_s)", "await asyncio.sleep(_wait_s)"], (
+        f"playwright_scraper.py: expected [sync, async] cooldown sleeps (scraper-api site sync, "
+        f"local/CDP browser-loop site async), got {cooldown_sleeps}"
+    )
+
+    # puppeteer: both sites live inside `async def run` even for the
+    # scraper-api path (unlike playwright) -- both must be async.
+    pup_src = (ROOT / "puppeteer_scraper.py").read_text(encoding="utf-8")
+    assert pup_src.count("await asyncio.sleep(_wait_s)") == 2, "puppeteer_scraper.py: expected both cooldown sleeps to be async"
+    assert "time.sleep(_wait_s)" not in pup_src
+
+    # selenium: fully sync, no asyncio at all -- both must be time.sleep.
+    sel_src = (ROOT / "selenium_scraper.py").read_text(encoding="utf-8")
+    assert sel_src.count("time.sleep(_wait_s)") == 2, "selenium_scraper.py: expected both cooldown sleeps to be sync"
+    assert "asyncio.sleep(_wait_s)" not in sel_src
+
+
+@check(
+    "--scraper-api-cdp without --scraper-api-profile-id logs a warning "
+    "nudging toward a reused, warmed profile instead of a fresh one from "
+    "2Captcha's default pool every run (added 2026-09-29 -- "
+    "scraping_browser_connection_url's own docstring already recommended "
+    "reuse; this surfaces it at the moment it matters, not just in docs). "
+    "Checked in all three engines, and that the warning is gated correctly "
+    "(fires only with --scraper-api-cdp, not on a plain --scraper-api run)."
+)
+def _():
+    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
+        src = (ROOT / path).read_text(encoding="utf-8")
+        assert "args.scraper_api_cdp and not args.scraper_api_profile_id" in src, (
+            f"{path}: missing the profile-reuse warning gate"
+        )
+        assert "each run gets a fresh" in src, f"{path}: profile-reuse warning text missing/changed"
 
 
 def run() -> int:

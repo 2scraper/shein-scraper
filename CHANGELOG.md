@@ -9,6 +9,96 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Added — 2026-09-29, block-risk-reduction: delay jitter, opt-in rate-limit cooldown, profile-reuse warning
+- Prompted by Roman asking to reduce block risk after the captcha/rate-limit
+  incidents above. Explicitly **not** in scope: identifying or
+  auto-solving SHEIN's own bot-mitigation captcha (the real "click icons
+  in sequence" coordinate widget confirmed live at
+  `/risk/verify/identity/validation/resources` — see README "Known
+  limitations") — that stays a manual, human step; this entry is only
+  about not tripping the gate as often, and recovering better when it
+  fires.
+- **`--delay-jitter` (default 0.3, all three engines)**: every
+  `--scroll-delay`/`--retry-delay`/`--rate-limit-cooldown` wait is now
+  multiplied by a random factor in `[1-jitter, 1+jitter]` via a new
+  `_jittered_delay()` helper, so a run's own request timing isn't
+  perfectly periodic — previously every wait was the exact configured
+  constant, every time. `0` restores the old exact-delay behavior (e.g.
+  for reproducible tests). Verified behaviorally (not just structurally):
+  `smoke_test.py` draws 200 real samples from each engine's own function
+  and checks the bounds hold and the output is actually non-constant.
+- **`--rate-limit-cooldown` (default `0.0`, off — all three engines)**:
+  on SHEIN's own rate-limit gate (`/risk/action/limit`, confirmed live
+  2026-09-21), this repo has always given up immediately with a log
+  message suggesting "try again after at least five minutes" without
+  ever actually doing that itself. Setting `--rate-limit-cooldown 300`
+  (or any positive value) now waits that long (jittered) and retries
+  ONCE on the same session before giving up for real, honoring that same
+  observed cooldown instead of just printing it. Deliberately **off by
+  default**: turning it on unconditionally would silently make a normal
+  invocation take minutes longer the first time it gets rate-limited,
+  which is a bigger behavior change than a patch-level default should
+  make. Not yet exercised against a real SHEIN rate-limit live with a
+  real 5-minute wait — `smoke_test.py` proves the retry-once wiring
+  (guarded by a new `args._cooldown_used` flag so it can only fire once
+  per run) and, separately, that the two call sites use the correct
+  sync/async sleep style for their surrounding function (a real mistake
+  this change introduced and caught in review before shipping — see
+  below).
+- **`--scraper-api-cdp` without `--scraper-api-profile-id` now logs a
+  warning** at the moment it matters, instead of only in
+  `scraping_browser_connection_url`'s own docstring: each run otherwise
+  gets a fresh profile from 2Captcha's default pool rather than a warmed,
+  reused identity, which is the opposite of what this repo's own
+  `--block-retries`/context-reuse work above is trying to achieve.
+- Caught in review before this shipped: the first draft of the
+  `--rate-limit-cooldown` retry used a blocking `time.sleep()` inside
+  Playwright's local/CDP browser loop, which runs inside `async def
+  run()` — copied from the sibling `--scraper-api` code path, which really
+  is sync. Fixed to `await asyncio.sleep()` there; a new structural
+  `smoke_test.py` check now pins the sync/async style expected at each of
+  the two call sites per engine so this can't silently regress.
+- `smoke_test.py`: 72 → 77 checks (5 new: `_jittered_delay` behavior,
+  jitter wired into every scroll/retry sleep site with no bare call left
+  over, the cooldown flag/guard/retry-once wiring, the sync/async sleep
+  style at each site, and the profile-reuse warning). All 77 confirmed
+  passing live on Roman's own machine, alongside `.github/ci_checks.py`'s
+  credential scan.
+
+
+### Fixed — 2026-09-29, crash when a recycled Browser API session leaves `browser.contexts` empty
+- Found live on Roman's own machine testing the context-reuse fix above:
+  a real `--block-retries` run hit SHEIN's `/risk/challenge` twice in a
+  row on the same Browser API profile (`captcha_type=909`, then `903`).
+  On the third attempt, `browser.contexts` came back empty and
+  `_new_context` raised `RuntimeError`, uncaught — crashing the whole run
+  (exit 1, no `.meta.json`) instead of degrading that one attempt, which
+  is exactly the CLAUDE.md §6 invariant this family is supposed to hold.
+  The provider appears to recycle a profile's underlying session during a
+  long block; this codebase had never observed that before now.
+- Fixed: `_new_context` now falls back to a fresh, empty context when the
+  persistent one is gone, logging a warning, instead of raising. That
+  attempt loses whatever cookies the persistent context carried (a
+  previously solved challenge no longer applies to it), but the run
+  itself survives to report a normal blocked/zero-product outcome.
+- New `smoke_test.py` regression check drives `_new_context` against a
+  fake browser with `contexts == []` and asserts it falls back to
+  `new_context()` instead of raising (72 checks total, up from 71).
+
+### Fixed — 2026-09-29, keep Browser API profile cookies in Playwright
+- A live US Browser API profile was redirected to SHEIN's
+  `/risk/challenge?captcha_type=909`. The user completed the visible
+  "I am human" step in Browser API Live. A diagnostic request using the
+  profile's default CDP context then returned 10 products, while the
+  scraper still created a fresh empty context for each run.
+- Playwright now reuses the provider's default context for `--cdp-endpoint`
+  and closes only the page it opened. Local browser runs still create and
+  close their own isolated contexts. The regression check covers both.
+- The full Playwright CLI then completed a live `dress` search with exit
+  `0`, `status=complete`, 10 unique products, and prices on all 10.
+  Passing the initial SHEIN challenge remains a manual step for this
+  profile; this change preserves its result rather than automating it.
+
 ### Fixed — 2026-09-28, `puppeteer_scraper.py main()`: real `asyncio.get_event_loop()` crash, plus a new permanent regression guard for the whole `main()` entry point
 - Found while re-verifying this repo end to end after Roman's direct
   feedback that "done" claims here have previously turned out to be
