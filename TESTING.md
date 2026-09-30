@@ -155,8 +155,11 @@ python3 playwright_scraper.py --query "summer dress" --max-results 10 \
 
 Look for `Passed SHEIN's risk challenge` in the log and `status=complete`
 in the sidecar. If rounds keep failing, open `roundN_icon.png`: a missing
-icon file means the widget markup changed (see `STATE_JS`). Confirmed
-live for Playwright on 2026-09-30; Selenium and Puppeteer still need this
+icon file means the widget markup changed (see `STATE_JS`). Every
+round logging `validation/check: code=9001`, including correct answers,
+means SHEIN has written this profile off: switch profiles. Confirmed
+live for Playwright on 2026-09-30 (2 of 3 fresh profiles passed, each on
+round 3); Selenium and Puppeteer still need this
 run.
 
 ## 7. The residential proxy (`--proxy` / `SHEIN_PROXY`), for real

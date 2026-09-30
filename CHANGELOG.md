@@ -64,7 +64,13 @@ rather than being a silent violation of that.
   answer is three tiles. The GridTask comment now says "exactly 3". The
   Playwright engine logs every `validation/check` verdict
   (`code`/`msg`), the one signal separating a wrong answer from a risk
-  rejection. Not yet re-verified on an unburned profile.
+  rejection. Re-verified on a third fresh US profile: the checkbox
+  escalated to the grid (`code=0`, `type=nine_captcha`), rounds 1 and 2
+  were correct by eye (all cyclists, then all football) and still got
+  `9001`, and round 3 got `code=0` and redirected. The CLI finished with
+  `status=complete`, exit 0, 10 products with prices on all 10. Across
+  the three fresh profiles, SHEIN rejected the first one or two correct
+  answers every time, hence the default of 5 rounds.
 - `smoke_test.py`: 78 → 87 checks.
 
 ### Added — 2026-09-29, block-risk-reduction: delay jitter, opt-in rate-limit cooldown, profile-reuse warning

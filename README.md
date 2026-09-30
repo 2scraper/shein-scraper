@@ -24,8 +24,9 @@ automatically** (`shein_challenge.py`, `--risk-challenge-rounds`, default
 server escalates, a 3x3 "select all images according to the icon" grid.
 The scraper clicks the checkbox and solves the grid through a 2Captcha
 `GridTask` (needs `TWOCAPTCHA_KEY`). A Playwright `--cdp-endpoint` run
-from a fresh US profile passed on round 3 and returned 10 products with
-prices, exit `0`. SHEIN sometimes rejects a correct answer
+passed on round 3 on two of three fresh US profiles and returned 10
+products with prices, exit `0`. On each profile SHEIN rejected the first
+one or two correct answers. SHEIN sometimes rejects a correct answer
 (`code=9001`), so expect more than one round. **It is not a guaranteed
 pass:** a second fresh profile got `9001` on every submission, including
 correct ones. That is a risk-score rejection nothing on the page can fix;
