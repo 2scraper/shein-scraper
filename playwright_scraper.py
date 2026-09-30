@@ -52,6 +52,7 @@ else:
     _PLAYWRIGHT_IMPORT_ERROR = None
 
 import env_config
+import scraper_api_client
 import shein_challenge
 import shein_parser as sp
 from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
@@ -121,7 +122,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--url", default=None, help="Full shein.com search/category/product URL (or set SHEIN_URL) — overrides --query/--category")
     p.add_argument("--query", default=None, help="Search term, e.g. 'summer dress'")
     p.add_argument("--category", default=None, help="A category path copied from shein.com navigation, e.g. 'Women Jeans-c-1934.html'")
-    p.add_argument("--sort", choices=sp.SORT_VALUES, default="relevance", help="Recorded on the run only — NOT yet wired into the URL, see shein_parser.py")
+    p.add_argument("--sort", choices=sp.SORT_VALUES, default="relevance", help="Recorded in the sidecar only — NOT sent to SHEIN yet (its query parameter is unconfirmed, see shein_parser.py); diff_runs refuses runs whose sort differs")
     p.add_argument("--max-results", type=_positive_int, default=30, help="Cap on number of products scraped")
     p.add_argument("--max-scrolls", type=_positive_int, default=20, help="Hard cap on scroll rounds, independent of --stall-rounds")
     p.add_argument("--stall-rounds", type=_positive_int, default=4, help="Stop after this many consecutive scrolls add no new product")
@@ -431,10 +432,9 @@ async def _connect_over_cdp(pw, cdp_endpoint: str):
     the connection error rather than letting it propagate: connect_over_cdp
     repeats a failed endpoint's login:password in its own message and
     "Call log" several times over."""
-    try:
-        return await pw.chromium.connect_over_cdp(cdp_endpoint)
-    except Exception as exc:
-        raise RuntimeError(f"CDP connection failed: {redact_credentials(str(exc))}") from None
+    return await scraper_api_client.connect_with_retry(
+        lambda: pw.chromium.connect_over_cdp(cdp_endpoint), redact=redact_credentials, log=log,
+    )
 
 
 async def _read_gb_raw_data(page: Page) -> Optional[dict]:
@@ -623,6 +623,7 @@ async def scrape_search(
     final_html = await page.content()
     final_raw_data = await _read_gb_raw_data(page)
     total_available = sp.total_result_count(final_html, raw_data=final_raw_data)
+    args._total_results = total_available
     expected = min(total_available, args.max_results) if total_available is not None else None
     if expected is not None and len(merged) < expected:
         log.warning(
@@ -797,6 +798,7 @@ async def run(args: argparse.Namespace) -> int:
     args._rate_limited = False
     args._cooldown_used = False
     args._rejected_rows = 0
+    args._total_results = None
     args._solve_budget = shein_challenge.SolveBudget(args.max_solves)
     started_at = time.time()
     start_url, is_product_page = _resolve_start_url(args)
@@ -924,7 +926,8 @@ async def run(args: argparse.Namespace) -> int:
             products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
             pages_requested=1, pages_completed=0 if remote_api_error else 1, failed_pages=None,
             blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent}, price_confirmed_pct=price_confirmed_pct,
+            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent, "sort": getattr(args, "sort", None)},
+            rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None), price_confirmed_pct=price_confirmed_pct,
         )
 
     if async_playwright is None:
@@ -1039,7 +1042,8 @@ async def run(args: argparse.Namespace) -> int:
         blocked=blocked,
         remote_api_error=remote_api_error,
         allow_empty=args.allow_empty,
-        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent},
+        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent, "sort": getattr(args, "sort", None)},
+            rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None),
         price_confirmed_pct=price_confirmed_pct,
     )
 

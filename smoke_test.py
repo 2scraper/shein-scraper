@@ -106,11 +106,15 @@ def _():
 
 @check("no forbidden overclaiming wording in any shipped .py/.md/.yml file")
 def _():
+    # Built from pieces so this file can be scanned too (CLAUDE.md §22: the
+    # check used to exempt its own file, where the phrases sat verbatim).
+    anti = "anti" + "detect"
     banned = (
-        "cloud browser", "antidetect browser", "2scraper antidetect browser",
-        "gate.2prx.com", "--antidetect", "antidetect_local_api",
+        "cloud" + " browser", anti + " browser", "2scraper " + anti + " browser",
+        "gate." + "2prx.com", "--" + anti, anti + "_local_api",
     )
-    exempt_names = {"smoke_test.py", "CLAUDE.md"}
+    exempt_names = {"CLAUDE.md"}
+    venvs = {p.parent for p in ROOT.rglob("pyvenv.cfg")}
     for path in ROOT.rglob("*"):
         if not path.is_file():
             continue
@@ -118,7 +122,7 @@ def _():
             continue
         if path.name in exempt_names or path.name.startswith("2scraper"):
             continue
-        if ".git" in path.parts:
+        if ".git" in path.parts or "__pycache__" in path.parts or any(v in path.parents for v in venvs):
             continue
         text = path.read_text(encoding="utf-8", errors="ignore").lower()
         for phrase in banned:
@@ -1614,8 +1618,9 @@ def _():
     # rather than crash there. The offline CI job (a full checkout) is
     # what actually exercises this check.
     scanner = ROOT / ".github" / "ci_checks.py"
-    if not scanner.exists():
-        return
+    if not (ROOT / ".github").is_dir():
+        return  # a Docker build context ships no .github/ at all (CLAUDE.md §22)
+    assert scanner.exists(), ".github/ exists but ci_checks.py is gone — that must fail, not skip"
     import subprocess
     import sys as _sys
 
@@ -1630,8 +1635,9 @@ def _():
     import importlib.util
 
     scanner = ROOT / ".github" / "ci_checks.py"
-    if not scanner.exists():
-        return
+    if not (ROOT / ".github").is_dir():
+        return  # a Docker build context ships no .github/ at all (CLAUDE.md §22)
+    assert scanner.exists(), ".github/ exists but ci_checks.py is gone — that must fail, not skip"
     spec = importlib.util.spec_from_file_location("shein_ci_checks", scanner)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -2362,6 +2368,130 @@ def _():
         raise scraper_api_client.TwoCaptchaError("createTask failed: ERROR_KEY_DOES_NOT_EXIST The API key is missing")
     out = asyncio.run(shein_challenge.pass_risk_challenge(_FakeChallenge(grid_results=[]), None, max_rounds=5, solve=solve, step_timeout=2))
     assert len(calls) == 1 and not out.passed and "refused the account" in out.detail, (len(calls), out.detail)
+
+
+@check("the credential scanner FINDS a planted key in every shape seen in the family (JSON-quoted, JSON-escaped, 32-hex next to a key word) and ignores placeholders, type hints and Python-name mappings — a scanner that cannot fail is not one (CLAUDE.md §24/§25)")
+def _():
+    import importlib.util
+    scanner = ROOT / ".github" / "ci_checks.py"
+    if not (ROOT / ".github").is_dir():
+        return
+    spec = importlib.util.spec_from_file_location("shein_ci_checks_planted", scanner)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    fake32 = "0123456789abcdef" * 2
+    for planted in ('"api_key": "a8f3k2m9q7x1z5b4"', '{\\"api_key\\": \\"a8f3k2m9q7x1z5b4\\"}',
+                    "TWOCAPTCHA_KEY=" + fake32, '"clientKey":"' + fake32 + '"'):
+        assert mod.scan_text("planted.txt", planted), f"scanner missed a planted credential: {planted!r}"
+    for harmless in ("api_key: Optional[str] = None", "TWOCAPTCHA_KEY=your-key-here", '"TWOCAPTCHA_KEY": "twocaptcha_key",'):
+        assert not mod.scan_text("ok.txt", harmless), f"false positive: {harmless!r}"
+
+
+@check("no workflow imports a local module inline — tests.yml calls ci_checks.py instead (CLAUDE.md §26: an inline heredoc import is red only on the first push)")
+def _():
+    import re as _re
+    local = {p.stem for p in ROOT.glob("*.py")}
+    for wf in (ROOT / ".github" / "workflows").glob("*.yml"):
+        text = wf.read_text(encoding="utf-8")
+        for m in _re.finditer(r"^\s*(?:from\s+([A-Za-z_]\w*)\s+import|import\s+([A-Za-z_]\w*))", text, _re.M):
+            name = m.group(1) or m.group(2)
+            assert name not in local, f"{wf.name}: imports local module {name!r} inline"
+    assert "ci_checks.py --sample-check" in (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+
+@check(".gitignore covers every artefact a run writes (CLAUDE.md §22/§26): .env copies, --dump-html challenge screenshots, *.pageN dumps, live/ — while sample outputs, fixtures and .env.example stay tracked")
+def _():
+    import subprocess as _sp
+    if not (ROOT / ".git").exists():
+        return
+    must_ignore = [".env", ".env.bak", ".env.local", "shein_results_challenge/round1_grid.png",
+                   "out.json.page3", "live/x.html", "shein_results_debug.html", "run.json"]
+    must_keep = [".env.example", "sample_output.json", "sample_output.csv", "tests/fixtures/shein_search_live_dress_20260921.json"]
+    for path in must_ignore:
+        assert _sp.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0, f"not ignored: {path}"
+    for path in must_keep:
+        assert _sp.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode != 0, f"wrongly ignored: {path}"
+
+
+@check("Scraping Browser connect (CLAUDE.md §26): a busy profile (HTTP 500) is retried 3x, a 401 fails at once and SAYS the endpoint expired, and a connect that never resolves (pyppeteer) is bounded — credentials never reach the message")
+def _():
+    sac = scraper_api_client
+    sleeps = []
+
+    async def fake_sleep(s):
+        sleeps.append(s)
+
+    def run_with(failures, *, hang=False):
+        attempts = []
+
+        async def connect():
+            attempts.append(1)
+            if hang:
+                await asyncio.sleep(3600)
+            if len(attempts) <= len(failures):
+                raise Exception(failures[len(attempts) - 1])
+            return "browser"
+        original = sac.CDP_CONNECT_TIMEOUT_S
+        sac.CDP_CONNECT_TIMEOUT_S = 0.05
+        try:
+            return asyncio.run(sac.connect_with_retry(connect, redact=lambda m: m.replace("secretpw", "***"), sleep=fake_sleep)), attempts
+        except RuntimeError as exc:
+            return exc, attempts
+        finally:
+            sac.CDP_CONNECT_TIMEOUT_S = original
+
+    busy = "WebSocket error: ws://u:secretpw@cb.2captcha.com:9222/ 500 Internal Server Error"
+    result, attempts = run_with([busy, busy])
+    assert result == "browser" and len(attempts) == 3 and sleeps == [3.0, 3.0], (result, attempts, sleeps)
+
+    result, attempts = run_with(["WebSocket error: ws://u:secretpw@cb.2captcha.com:9222/ 401 Unauthorized"])
+    assert isinstance(result, RuntimeError) and len(attempts) == 1
+    assert "expire" in str(result) and "secretpw" not in str(result), str(result)
+
+    result, attempts = run_with([], hang=True)
+    assert isinstance(result, RuntimeError) and len(attempts) == 3 and "timed out" in str(result), (result, attempts)
+
+    for mod in (playwright_scraper, puppeteer_scraper):
+        src = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
+        assert "scraper_api_client.connect_with_retry(" in src, f"{mod.__name__}: connects without the shared policy"
+
+
+@check("sidecar records what a reader needs (sort, total_results, solves_spent), a throttle with rows is stop_reason=rate_limited (not blocked, CLAUDE.md §24), and diff_runs refuses runs of another --sort")
+def _():
+    with tempfile.TemporaryDirectory() as td:
+        out = str(Path(td) / "o.json")
+        code = output_writer.finish_run(
+            products=[_mk_product("1")], out_path=out, fmt="json", engine="t", url="u", pages_requested=2,
+            pages_completed=1, failed_pages=None, blocked=True, remote_api_error=False, allow_empty=False,
+            started_at=0.0, rate_limited=True, total_results=12345, extra_meta={"sort": "new", "solves_spent": 2},
+        )
+        meta = json.loads(Path(out + ".meta.json").read_text())
+        assert code == output_writer.EXIT_PARTIAL and meta["stop_reason"] == "rate_limited", meta
+        assert meta["total_results"] == 12345 and meta["sort"] == "new" and meta["solves_spent"] == 2
+        url = "https://us.shein.com/pdsearch/dress/"
+        a = _diff_run(td, "a.json", [_mk_product("s1")], url, extra_meta={"sort": "relevance"})
+        b = _diff_run(td, "b.json", [_mk_product("s1")], url, extra_meta={"sort": "new"})
+        try:
+            diff_runs.diff(a, b)
+            raise AssertionError("different --sort must be refused")
+        except SystemExit as exc:
+            assert "--sort" in str(exc)
+    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
+        src = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
+        assert src.count('"sort": getattr(args, "sort", None)') == 2 and "args._total_results = total_available" in src, mod.__name__
+    wf = (ROOT / ".github" / "workflows" / "canary.yml").read_text(encoding="utf-8")
+    assert "elif code == 5:" in wf and "if: github.event_name == 'workflow_dispatch'" in wf
+
+
+@check("an unreviewed product has rating=None, not 0.0 (CLAUDE.md §21/§24: zero is not a rating); a reviewed one keeps its rating")
+def _():
+    import copy as _copy
+    data = _copy.deepcopy(_real_gb())
+    first = data["results"]["bffProductsInfo"]["products"][0]
+    first["comment_num"], first["comment_rank_average"] = "0", "0"
+    res = sp.parse_search_results("", max_results=10, raw_data=data)
+    assert res.products[0].rating is None and res.products[0].review_count == 0
+    assert any(p.rating for p in res.products[1:]), "reviewed products must keep their rating"
 
 
 def run() -> int:

@@ -45,6 +45,7 @@ else:
     _PYPPETEER_IMPORT_ERROR = None
 
 import env_config
+import scraper_api_client
 import shein_challenge
 import shein_parser as sp
 from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
@@ -95,7 +96,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--url", default=None)
     p.add_argument("--query", default=None)
     p.add_argument("--category", default=None)
-    p.add_argument("--sort", choices=sp.SORT_VALUES, default="relevance", help="Recorded on the run only — NOT yet wired into the URL, see shein_parser.py")
+    p.add_argument("--sort", choices=sp.SORT_VALUES, default="relevance", help="Recorded in the sidecar only — NOT sent to SHEIN yet (its query parameter is unconfirmed, see shein_parser.py); diff_runs refuses runs whose sort differs")
     p.add_argument("--max-results", type=_positive_int, default=30)
     p.add_argument("--max-scrolls", type=_positive_int, default=20)
     p.add_argument("--stall-rounds", type=_positive_int, default=4)
@@ -208,10 +209,12 @@ def _dump_path(out_path: str) -> str:
 
 async def _launch(*, headless: bool, proxy: Optional[Proxy], cdp_endpoint: Optional[str]):
     if cdp_endpoint:
-        try:
-            return await pyppeteer_connect(browserWSEndpoint=cdp_endpoint, defaultViewport=None)
-        except Exception as exc:
-            raise RuntimeError(f"CDP connection failed: {redact_credentials(str(exc))}") from None
+        # pyppeteer's connect() has no timeout of its own and never resolves on
+        # a refused handshake — connect_with_retry bounds every attempt.
+        return await scraper_api_client.connect_with_retry(
+            lambda: pyppeteer_connect(browserWSEndpoint=cdp_endpoint, defaultViewport=None),
+            redact=redact_credentials, log=log,
+        )
     args = ["--no-sandbox", "--disable-dev-shm-usage"]
     if proxy is not None:
         args.append(proxy.pyppeteer_launch_arg())
@@ -526,6 +529,7 @@ async def scrape_search(
     except Exception:  # noqa: BLE001
         final_raw_data = None
     total_available = sp.total_result_count(final_html, raw_data=final_raw_data)
+    args._total_results = total_available
     expected = min(total_available, args.max_results) if total_available is not None else None
     if expected is not None and len(merged) < expected:
         log.warning(
@@ -691,6 +695,7 @@ async def run(args: argparse.Namespace) -> int:
     args._rate_limited = False
     args._cooldown_used = False
     args._rejected_rows = 0
+    args._total_results = None
     args._solve_budget = shein_challenge.SolveBudget(args.max_solves)
     started_at = time.time()
     start_url, is_product_page = _resolve_start_url(args)
@@ -803,7 +808,8 @@ async def run(args: argparse.Namespace) -> int:
             products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
             pages_requested=1, pages_completed=0 if remote_api_error else 1, failed_pages=None,
             blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent}, price_confirmed_pct=price_confirmed_pct,
+            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent, "sort": getattr(args, "sort", None)},
+            rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None), price_confirmed_pct=price_confirmed_pct,
         )
 
     if pyppeteer_launch is None:
@@ -887,7 +893,8 @@ async def run(args: argparse.Namespace) -> int:
         products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
         pages_requested=args.max_scrolls, pages_completed=completed_rounds, failed_pages=failed_pages,
         blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent}, price_confirmed_pct=price_confirmed_pct,
+        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent, "sort": getattr(args, "sort", None)},
+            rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None), price_confirmed_pct=price_confirmed_pct,
     )
 
 

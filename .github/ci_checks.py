@@ -37,18 +37,25 @@ TOKEN_RULES = {
     "openai_key": re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
 }
 URL_CREDENTIALS = re.compile(r"\b(?:https?|wss?)://([^\s/@:]+):([^\s/@]+)@", re.I)
+# The name may itself be quoted, and JSON-escaped inside a string
+# (`"api_key": "…"`, `\"api_key\": \"…\"`) — CLAUDE.md §24: the old form
+# required `=`/`:` right after the bare name and missed both.
 SECRET_ASSIGNMENT = re.compile(
-    r"\b(?:api[_-]?key|twocaptcha[_-]?key|TWOCAPTCHA_KEY|SHEIN_PROXY|"
+    r"\b(?:api[_-]?key|client[_-]?key|twocaptcha[_-]?key|TWOCAPTCHA_KEY|SHEIN_PROXY|"
     r"SHEIN_CDP_ENDPOINT|FINGERPRINT_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)"
-    r"\s*(?:=|:)\s*"
-    r"(?:(['\"])([^'\"]{8,})\1|([^\s#'\"]{8,}))",
+    r"\\?['\"]?\s*(?:=|:)\s*\\?"
+    r"(?:(['\"])([^'\"\\]{8,})\\?\1|([^\s#'\"\\,}]{8,}))",
     re.I,
 )
+# A 2Captcha key is 32 lowercase hex characters; next to a key-like word it
+# is a credential whatever the assignment syntax around it.
+KEYISH_HEX32 = re.compile(r"(?i)(?:key|token)\W{0,8}\b[0-9a-f]{32}\b")
 PLACEHOLDER_WORDS = (
     "user", "username", "login", "pass", "password", "example", "fake",
     "secret", "redacted", "changeme", "your", "test",
 )
 _WORD_SPLIT_RE = re.compile(r"[^a-z0-9]+")
+_IDENTIFIER_RE = re.compile(r"[a-z_]+")
 
 
 def _words(token: str) -> set[str]:
@@ -71,6 +78,18 @@ _PLACEHOLDER_WORD_SET = {w for phrase in PLACEHOLDER_WORDS for w in _words(phras
 _NOT_SOURCE_DIR = re.compile(r"(^|/)(\.venv[^/]*|venv|env|node_modules|__pycache__|\.git)(/|$)")
 
 
+def _in_virtualenv(relative: str) -> bool:
+    """True when any parent directory holds a `pyvenv.cfg` — a virtualenv
+    under ANY name (`myenv/`, `.venv-selenium/`), not just the names the
+    regex above knows (CLAUDE.md §23)."""
+    parent = (ROOT / relative).parent
+    while parent != ROOT and ROOT in parent.parents:
+        if (parent / "pyvenv.cfg").exists():
+            return True
+        parent = parent.parent
+    return False
+
+
 def repository_files() -> list[str]:
     """`git ls-files` when ROOT is a real git working tree (true in CI's
     `actions/checkout`, and in any real clone) — a plain filesystem walk
@@ -89,7 +108,7 @@ def repository_files() -> list[str]:
             for p in ROOT.rglob("*")
             if p.is_file()
         ]
-    return [p for p in paths if not _NOT_SOURCE_DIR.search(p)]
+    return [p for p in paths if not _NOT_SOURCE_DIR.search(p) and not _in_virtualenv(p)]
 
 
 def is_placeholder(user: str, password: str) -> bool:
@@ -123,17 +142,13 @@ def _looks_like_type_hint(value: str) -> bool:
     return bool(_TYPE_HINT_RE.match(value))
 
 
-def scan() -> list[tuple[str, int, str]]:
+def scan_text(relative: str, text: str) -> list[tuple[str, int, str]]:
+    """The rules, on one file's text — separate so a check can PLANT a
+    credential and require it to be found (a scanner that cannot fail is
+    not a scanner, CLAUDE.md §25)."""
     findings: list[tuple[str, int, str]] = []
-    for relative in repository_files():
-        if relative in FIXTURE_ALLOWLIST:
-            continue
-        path = ROOT / relative
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue
-        for line_no, line in enumerate(text.splitlines(), 1):
+    for line_no, line in enumerate(text.splitlines(), 1):
+        if True:
             for rule, pattern in TOKEN_RULES.items():
                 if pattern.search(line):
                     findings.append((relative, line_no, rule))
@@ -144,12 +159,47 @@ def scan() -> list[tuple[str, int, str]]:
                 if match.group(3) and _looks_like_type_hint(match.group(3)):
                     continue
                 value = match.group(2) or match.group(3)
+                if _IDENTIFIER_RE.fullmatch(value):
+                    continue  # a mapping to a Python name (env_config.ENV_KEYS), not a value
                 if not is_placeholder(value, value):
                     findings.append((relative, line_no, "secret_assignment"))
+            if KEYISH_HEX32.search(line):
+                findings.append((relative, line_no, "hex32_key"))
     return findings
 
 
+def scan() -> list[tuple[str, int, str]]:
+    findings: list[tuple[str, int, str]] = []
+    for relative in repository_files():
+        if relative in FIXTURE_ALLOWLIST:
+            continue
+        try:
+            text = (ROOT / relative).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        findings.extend(scan_text(relative, text))
+    return findings
+
+
+def sample_check() -> int:
+    """sample_output.{json,csv} carry exactly the Product columns. Lives
+    here so tests.yml calls it instead of importing a local module inline
+    (CLAUDE.md §26)."""
+    import csv
+    import json
+    sys.path.insert(0, str(ROOT))
+    from output_writer import PRODUCT_FIELD_NAMES
+    rows = json.loads((ROOT / "sample_output.json").read_text(encoding="utf-8"))
+    assert rows and set(rows[0]) == set(PRODUCT_FIELD_NAMES), "sample_output.json columns drifted"
+    with (ROOT / "sample_output.csv").open(newline="", encoding="utf-8") as f:
+        assert next(csv.reader(f)) == PRODUCT_FIELD_NAMES, "sample_output.csv header drifted"
+    print("sample_output OK")
+    return 0
+
+
 def main() -> int:
+    if "--sample-check" in sys.argv[1:]:
+        return sample_check()
     findings = scan()
     if findings:
         for path, line, rule in findings:

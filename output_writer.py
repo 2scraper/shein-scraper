@@ -243,6 +243,8 @@ def finish_run(
     extra_meta: Optional[dict] = None,
     rejected_rows: int = 0,
     max_results: Optional[int] = None,
+    rate_limited: bool = False,
+    total_results: Optional[int] = None,
 ) -> int:
     """Decide status/exit code, write output + sidecar (or neither), return
     the process exit code. NEVER writes a sidecar for a failed run, and
@@ -276,8 +278,10 @@ def finish_run(
         stop_reason = status
     elif remote_api_error or blocked or partial or rejected_rows:
         status, exit_code = "partial", EXIT_PARTIAL
-        stop_reason = ("remote_api_error" if remote_api_error else "blocked" if blocked
-                       else "failed_pages" if partial else "rejected_rows")
+        # A throttle is not a block (CLAUDE.md §24): "blocked" sends the
+        # reader to buy a proxy, "rate_limited" to slow down.
+        stop_reason = ("remote_api_error" if remote_api_error else "rate_limited" if rate_limited and blocked
+                       else "blocked" if blocked else "failed_pages" if partial else "rejected_rows")
     else:
         status, exit_code = "complete", EXIT_OK
         stop_reason = status
@@ -305,6 +309,8 @@ def finish_run(
     if max_results is not None:
         extra["max_results"] = max_results
         extra["capped"] = len(products) >= max_results
+    if total_results is not None:
+        extra["total_results"] = total_results  # what the site says exists, vs product_count collected
     extra["output_sha256"] = hashlib.sha256(Path(out_path).read_bytes()).hexdigest()
     write_meta(
         out_path, status=status, stop_reason=stop_reason, engine=engine, url=url,

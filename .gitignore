@@ -8,6 +8,9 @@ shein_results.*
 *_debug.html
 *_debug.png
 live_results/
+live/
+*_challenge/
+*.page[0-9]*
 
 # python
 __pycache__/
@@ -31,9 +34,10 @@ node_modules/
 .idea/
 .vscode/
 
-# secrets
+# secrets — `.env*` so a `.env.bak`/`.env.local` copy is never one `git add -A` away (CLAUDE.md §22)
 *.log
-.env
+.env*
+!.env.example
 *.key
 secrets*
 

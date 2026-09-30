@@ -9,6 +9,46 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Changed — 2026-09-30, sync with CLAUDE (4).md §19–26
+A read-only pass over the new sections found rules this repo broke. Each
+was re-checked on the code before fixing (CLAUDE.md §14):
+- **`.gitignore`**: `.env*` (with `!.env.example`); `.env.bak` was not
+  ignored. Also `*_challenge/` (the `--dump-html` challenge screenshots),
+  `*.page[0-9]*` and `live/`. A check runs `git check-ignore` on both
+  must-ignore and must-keep paths (§22/§26).
+- **Credential scan** (`.github/ci_checks.py`): caught neither
+  `"api_key": "…"` nor its JSON-escaped form. It now allows a quoted and
+  escaped name, flags a 32-hex value next to a key word, skips any
+  directory holding `pyvenv.cfg` (not only known venv names), and exposes
+  `scan_text()` so a check plants four credential shapes and requires all
+  four found (§23–§25).
+- **No inline local imports in workflows**: the sample-output step
+  imported `output_writer` inline. It now calls `ci_checks.py
+  --sample-check`, with a check guarding it (§26).
+- **Banned-wording check**: it exempted its own file, where the phrases
+  sat verbatim, and walked into `.venv*`. The phrases are built from
+  pieces, the exemption is gone, and venvs are skipped by `pyvenv.cfg`.
+- **Scanner checks skip only when `.github/` is absent**: deleting
+  `ci_checks.py` alone used to turn both of them green (§22).
+- **Scraping Browser connect** (`scraper_api_client.connect_with_retry`,
+  both CDP engines): 3 attempts 3s apart for a busy profile (HTTP 500 /
+  timeout), each bounded at 10s (pyppeteer never resolves a refused
+  handshake), and a 401 fails at once saying the endpoint expired. Live:
+  an old profile now reports exactly that (§26).
+- **Canary**: exit 5 from the secret-less local job is an error, not a
+  notice. The CDP job is manual-dispatch only, because endpoints expire
+  after about a day (§24/§26).
+- **Sidecar**: `stop_reason=rate_limited` (a throttle is not a block,
+  §24), `total_results`, `sort`, `solves_spent`. `diff_runs` refuses runs
+  with a different `--sort`, and `--sort`'s help says it is recorded, not
+  sent (§21).
+- **Zero reviews give `rating=None`**, not 0.0 (§21/§24).
+
+Not changed: a committed Scraping-Browser fixture for the marker tests,
+a stop_reason for "links served but zero rows parsed", and the
+`--fingerprint` user agent without Client Hints under pyppeteer. Each
+needs a live capture to decide.
+
 ### Added — 2026-09-30, one paid-solve budget per run (`--max-solves`)
 - CLAUDE.md §23 ("a cap that nothing enforces is a bill"). Counted before
   the change: up to 5 grid/icon rounds per challenge pass times 3

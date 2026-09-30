@@ -85,6 +85,57 @@ class ScrapeResult:
     body: str
 
 
+# --------------------------------------------------------------------------- #
+# Scraping Browser API connect policy — CLAUDE.md §26, measured on a sibling
+# repo: a profile stays `profile_locked` for ~1.6-1.9s after a clean
+# disconnect (HTTP 500 to an immediate reconnect), pyppeteer's connect()
+# never resolves on a refused handshake, and a 401 means the endpoint's
+# credentials expired (they last about a day). Seen here too on 2026-09-30:
+# a 500 on a back-to-back run, a 401 on an older profile.
+# --------------------------------------------------------------------------- #
+CDP_CONNECT_ATTEMPTS = 3
+CDP_CONNECT_RETRY_DELAY_S = 3.0
+CDP_CONNECT_TIMEOUT_S = 10.0
+
+
+def classify_cdp_failure(message: str) -> tuple:
+    """(retryable, reader-facing reason) for a failed CDP connect. The
+    message is expected to be redacted already."""
+    text = message or ""
+    if " 401" in text or "Unauthorized" in text:
+        return False, ("the Scraping Browser endpoint's credentials were refused (HTTP 401) — they "
+                       "expire after about a day; get a fresh endpoint from your 2Captcha dashboard")
+    if " 500" in text or "profile_locked" in text or "timed out" in text.lower() or "Timeout" in text:
+        return True, ("the Scraping Browser profile is busy or not ready (HTTP 500 / timeout) — usually "
+                      "the previous session is still being released, or another run holds this pid")
+    return False, "the Scraping Browser connection failed"
+
+
+async def connect_with_retry(connect, *, redact, sleep=None, log=None):
+    """Run `connect()` (an awaitable factory) up to CDP_CONNECT_ATTEMPTS
+    times, each bounded by CDP_CONNECT_TIMEOUT_S, retrying only a
+    retryable failure. Raises RuntimeError with a redacted, explained
+    message when every attempt failed."""
+    import asyncio
+    sleep = sleep or asyncio.sleep
+    last = ""
+    for attempt in range(1, CDP_CONNECT_ATTEMPTS + 1):
+        try:
+            return await asyncio.wait_for(connect(), CDP_CONNECT_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            last = f"connect timed out after {CDP_CONNECT_TIMEOUT_S:.0f}s"
+        except Exception as exc:  # noqa: BLE001 — classified below, never propagated raw
+            last = redact(str(exc)).splitlines()[0] if str(exc) else type(exc).__name__
+        retryable, reason = classify_cdp_failure(last)
+        if not retryable or attempt == CDP_CONNECT_ATTEMPTS:
+            raise RuntimeError(f"CDP connection failed: {reason} ({last})") from None
+        if log is not None:
+            log.warning("CDP connect attempt %d/%d failed (%s) — retrying in %.0fs.", attempt,
+                        CDP_CONNECT_ATTEMPTS, reason, CDP_CONNECT_RETRY_DELAY_S)
+        await sleep(CDP_CONNECT_RETRY_DELAY_S)
+    raise RuntimeError(f"CDP connection failed: {last}")
+
+
 class TwoCaptchaClient:
     def __init__(
         self, api_key: Optional[str], timeout: int = 30, api_base: Optional[str] = None,

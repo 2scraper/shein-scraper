@@ -15,7 +15,8 @@ Added after the 2026-09-30 audit, which diffed one SKU at 9.93 USD from a
 "dress" run against 19.93 EUR from a "jeans" run and got a price change:
 
 - Two runs must share their scope — the sidecar `url` (host, path and
-  query: market, search term, category). Otherwise the diff is refused.
+  query: market, search term, category) and `sort`. Otherwise the diff is
+  refused.
 - A currency difference on a SKU is `currency_changed`, never `changed`,
   and is reported even when the number is the same.
 - When either run was capped by `--max-results` (sidecar `capped`), a SKU
@@ -85,6 +86,11 @@ def diff(old_path: str, new_path: str, *, allow_different_scope: bool = False) -
         raise SystemExit(
             f"error: refusing to diff runs of different selections: {old_meta.get('url')!r} vs "
             f"{new_meta.get('url')!r}. Pass --allow-different-scope to compare them anyway."
+        )
+    if not allow_different_scope and (old_meta.get("sort") or None) != (new_meta.get("sort") or None):
+        raise SystemExit(
+            f"error: refusing to diff runs with different --sort ({old_meta.get('sort')!r} vs "
+            f"{new_meta.get('sort')!r}) — a capped top-N under another ordering is another selection."
         )
     capped = bool(old_meta.get("capped") or new_meta.get("capped"))
 

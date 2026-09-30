@@ -618,6 +618,10 @@ def _gb_product_to_product(raw: dict, *, currency: Optional[str]) -> Optional[Pr
             review_count = int(raw["comment_num"])
     except (TypeError, ValueError):
         pass
+    # Zero reviews means no rating, not a rating of 0 (CLAUDE.md §21/§24):
+    # a 0.0 would read as the worst possible score and drag any average.
+    if review_count == 0:
+        rating = None
     in_stock = None
     if raw.get("soldOutStatus") is not None:
         in_stock = not bool(raw["soldOutStatus"])

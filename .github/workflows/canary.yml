@@ -77,8 +77,14 @@ jobs:
           # README), so this most likely means 'the site's own defense
           # fired this run' — worth investigating via the uploaded debug
           # HTML, not a broken build. Report it as a notice, not a failure.
-          elif code in (3, 4, 5):
-              print(f'::notice::exit {code} — no sidecar written (blocked/empty/remote-api-error, '
+          # EXIT_REMOTE_API_ERROR=5 cannot happen here: this job has no
+          # secrets and makes no remote-API call, so a 5 is a code defect
+          # (CLAUDE.md §24), never the site's defence.
+          elif code == 5:
+              print('::error::exit 5 (remote API error) from a run with no remote API configured — a bug in this repo.')
+              sys.exit(1)
+          elif code in (3, 4):
+              print(f'::notice::exit {code} — no sidecar written (blocked/empty, '
                     f'by finish_run design). Most likely shein.com\\'s own /risk/challenge or '
                     f'/risk/action/limit gateway fired this run (a confirmed, live, intermittent '
                     f'behavior — see README) — inspect canary_out_debug.html from this run\\'s '
@@ -114,7 +120,11 @@ jobs:
   # place to observe whether the Scraping Browser API's own device
   # identity avoids the confirmed /risk/challenge redirect entirely — see
   # TESTING.md step 6.
+  # Manual dispatch only: a Scraping Browser endpoint's credentials last
+  # about a day (CLAUDE.md §26), so on the daily schedule this job would be
+  # red from day two for a reason that has nothing to do with the code.
   canary-cdp:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       HAS_CDP: ${{ secrets.SHEIN_CDP_ENDPOINT != '' }}
