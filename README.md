@@ -18,6 +18,11 @@ codes, and family modules as `stockx-scraper` / `skyscanner-scraper` /
 
 ## Read this before trusting a run
 
+**Live update 2026-09-30 (evening):** after the audit fixes, a fresh US
+profile passed the icon-sequence challenge on round 3 and returned 10
+priced products; across 5 fresh profiles the challenge was passed on 3.
+Puppeteer reconnected through a locked profile and completed too.
+
 **Live update 2026-09-30: the `/risk/challenge` gateway is now passed
 automatically** (`shein_challenge.py`, `--risk-challenge-rounds`, default
 5). SHEIN's own two-step flow is an "I am human" checkbox, then, if the

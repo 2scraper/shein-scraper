@@ -351,7 +351,7 @@ async def _maybe_pass_risk_challenge(page, args: argparse.Namespace, client: Opt
         debug_dir=_challenge_debug_dir(args),
     )
     if outcome.passed:
-        log.info("Passed SHEIN's risk challenge (%s; %d GridTask solve(s)).", outcome.detail, outcome.solves)
+        log.info("Passed SHEIN's risk challenge (%s; %d paid solve(s)).", outcome.detail, outcome.solves)
         await asyncio.sleep(READINESS_WAIT_S)
     else:
         log.warning("SHEIN risk challenge not passed: %s", outcome.detail)
@@ -691,7 +691,23 @@ def _scrape_via_scraper_api(
     return parsed.products, blocked, False, 0, False
 
 
+_ORPHAN_CONNECT_ERRORS = ("InvalidStatusCode", "InvalidStatus", "InvalidHandshake", "AbortHandshake")
+
+
+def _quiet_orphaned_connect(loop, context) -> None:
+    """A refused CDP handshake leaves pyppeteer's own connect task failing
+    after connect_with_retry has already moved on (CLAUDE.md §26: "an
+    orphaned-task traceback after a correct exit"). Only that shape is
+    silenced; everything else reaches the default handler."""
+    exc = context.get("exception")
+    if exc is not None and type(exc).__name__ in _ORPHAN_CONNECT_ERRORS:
+        log.debug("orphaned CDP connect task: %s", exc)
+        return
+    loop.default_exception_handler(context)
+
+
 async def run(args: argparse.Namespace) -> int:
+    asyncio.get_running_loop().set_exception_handler(_quiet_orphaned_connect)
     args._rate_limited = False
     args._cooldown_used = False
     args._rejected_rows = 0

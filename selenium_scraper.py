@@ -391,7 +391,7 @@ def _maybe_pass_risk_challenge(driver, args: argparse.Namespace, client: Optiona
         debug_dir=_challenge_debug_dir(args),
     ))
     if outcome.passed:
-        log.info("Passed SHEIN's risk challenge (%s; %d GridTask solve(s)).", outcome.detail, outcome.solves)
+        log.info("Passed SHEIN's risk challenge (%s; %d paid solve(s)).", outcome.detail, outcome.solves)
         time.sleep(READINESS_WAIT_S)
     else:
         log.warning("SHEIN risk challenge not passed: %s", outcome.detail)

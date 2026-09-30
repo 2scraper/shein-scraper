@@ -9,6 +9,26 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Fixed — 2026-09-30, live re-validation of the day's changes (fresh US profile)
+- **Playwright over CDP passed the `icon_click` challenge** (round 3,
+  `validation/check code=0`, widget "Successful!") and returned 10 priced
+  products, `complete`, exit 0. The new sidecar fields were all present:
+  `solves_spent: 3`, `capped: true`, `total_results: 15448`, `sort`,
+  `output_sha256`.
+- A second run was `complete` with no challenge. **`diff_runs` on the two
+  live runs** reported 2 SKUs as `left_selection` in the capped top 10;
+  before this batch they would have been `removed`.
+- **Puppeteer**: its first connect, right after the Playwright run, got
+  HTTP 500 (profile still locked). `connect_with_retry` reconnected on
+  attempt 2, and the run was `complete` with 10 products. Seen twice.
+- Fixed from this run: the icon widget's "Successful!" was read as a
+  rejection and cost a round (a check now replays the live order —
+  sprite swap, then redirect — and went red without the fix; the first
+  version of that check did NOT, and was rewritten). The pass log said
+  "GridTask" for coordinate solves. The orphaned pyppeteer connect task's
+  traceback after a successful retry is now filtered by class.
+- Fresh-profile tally for the challenge: 3 passed out of 5.
+
 ### Changed — 2026-09-30, sync with CLAUDE (4).md §19–26
 A read-only pass over the new sections found rules this repo broke. Each
 was re-checked on the code before fixing (CLAUDE.md §14):

@@ -2494,6 +2494,41 @@ def _():
     assert any(p.rating for p in res.products[1:]), "reviewed products must keep their rating"
 
 
+@check("icon_click: 'Successful!' in the widget's tips box is a pass in THAT round (live 2026-09-30 it was read as a rejection and cost a round), 'Verification Failed' is not")
+def _():
+    class Tips(_FakeIconClick):
+        async def state(self):
+            st = await super().state()
+            if st.get("stage") == "icon_click" and self.last_confirm:
+                st["tips"] = self.last_confirm
+            return st
+
+        async def click(self, x, y):
+            if self.stage == "icon_click" and 449 <= y <= 485:
+                self.last_confirm = "Successful!" if self.grid_results[0] == "success" else "Verification Failed"
+                if self.grid_results[0] == "success":
+                    # Live order: the sprite swaps first, the redirect comes later —
+                    # which is what made the old code read success as a rejection.
+                    self.grid_results.pop(0)
+                    self.image_set += 1
+                    self.reads = 0
+                    self.redirect_in = 12
+                    return
+            await super().click(x, y)
+
+    fake = Tips(grid_results=["fail", "success"])
+    fake.last_confirm = ""
+    pts = {"coordinates": [{"x": 100, "y": 100}, {"x": 300, "y": 200}, {"x": 500, "y": 400}]}
+    calls = []
+
+    async def solve(task):
+        calls.append(task)
+        return json.dumps(pts)
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=5, solve=solve, step_timeout=3, redirect_timeout=5))
+    assert out.passed and out.rounds == 2 and len(calls) == 2, (out, len(calls))
+    assert "icon_click" in out.detail, out.detail
+
+
 def run() -> int:
     """All @check-decorated functions above already ran at import time
     (that's the point — see the `check()` docstring) and self-registered

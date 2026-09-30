@@ -53,6 +53,7 @@ import json
 import logging
 import os
 import random
+import re
 from dataclasses import dataclass
 from typing import Awaitable, Callable, List, Optional, Protocol, Sequence
 
@@ -76,6 +77,7 @@ GRID_COMMENT = "Select exactly 3 images that show the same action or object as t
 SEQUENCE_COMMENT = "Click the icons shown in the instruction, in the same order, left to right"
 MIN_SEQUENCE_POINTS = 2
 SOLVABLE_STAGES = ("nine_captcha", "icon_click")
+_SUCCESS_TIPS_RE = re.compile(r"success", re.I)  # "Successful!" live; "Verification Failed" on a rejection
 STAGES = ("one_pass",) + SOLVABLE_STAGES
 
 # Walks the document plus every OPEN shadow root (both widgets live in
@@ -495,6 +497,11 @@ async def pass_risk_challenge(
         _u, shown = await _read(driver)
         if shown.get("tips"):
             log.info("SHEIN risk challenge round %d: widget says %r.", round_num, shown["tips"])
+        # Live 2026-09-30: an accepted answer shows "Successful!" and then
+        # redirects; waiting only for the redirect or a new sprite read the
+        # success as a rejection and burned a round.
+        if _SUCCESS_TIPS_RE.search(shown.get("tips") or ""):
+            return "success"
         srcs = state.get("srcs")
         url, after = await _wait_for(
             driver, lambda u, s: not on_challenge(u) or (s.get("srcs") and s.get("srcs") != srcs)

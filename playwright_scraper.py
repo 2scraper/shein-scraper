@@ -420,7 +420,7 @@ async def _maybe_pass_risk_challenge(page: Page, args: argparse.Namespace, clien
         debug_dir=_challenge_debug_dir(args),
     )
     if outcome.passed:
-        log.info("Passed SHEIN's risk challenge (%s; %d GridTask solve(s)).", outcome.detail, outcome.solves)
+        log.info("Passed SHEIN's risk challenge (%s; %d paid solve(s)).", outcome.detail, outcome.solves)
         await page.wait_for_timeout(READINESS_WAIT_MS)
     else:
         log.warning("SHEIN risk challenge not passed: %s", outcome.detail)
