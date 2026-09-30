@@ -20,6 +20,16 @@ over `/risk/verify/identity/validation/{token,resources,check}`:
      by a redirect back to the original URL) or `.nine-fail`
      ("Authentication failed", followed by a fresh set of images).
 
+A third widget can appear in place of step 2 (seen live the same day on
+a local Selenium Chrome): `icon_click`, "Please click the following icons
+from left to right in sequence", a GeeTest-style light-DOM panel
+(`.geetest_panel_box > .captcha_click_wrapper`) whose one 286x316 sprite is
+the CSS background of both the 286x286 `.pic_wrapper` picture and the 30px
+`.pic_elg_wrapper` icon strip, with explicit `.captcha_click_confirm` /
+`.captcha_click_refresh` buttons. It maps onto 2Captcha's CoordinatesTask
+(icon strip as `imgInstructions`); "Verification Failed" in
+`.captcha_click_tips_box` is SHEIN's rejection.
+
 Step 2 maps directly onto 2Captcha's GridTask (rows=3, columns=3, the icon
 as `imgInstructions`), whose `solution.click` is the 1-based tile list.
 Live result on 2026-09-30: round 1's answer was correct by inspection but
@@ -60,6 +70,10 @@ GRID_COLUMNS = 3
 # raise the profile's risk score, a refresh does not.
 EXPECTED_PICKS = 3
 GRID_COMMENT = "Select exactly 3 images that show the same action or object as the small icon"
+SEQUENCE_COMMENT = "Click the icons shown in the instruction, in the same order, left to right"
+MIN_SEQUENCE_POINTS = 2
+SOLVABLE_STAGES = ("nine_captcha", "icon_click")
+STAGES = ("one_pass",) + SOLVABLE_STAGES
 
 # Walks the document plus every OPEN shadow root (both widgets live in
 # one) and reports the current stage with viewport-relative rects. Scroll
@@ -83,6 +97,7 @@ STATE_JS = r"""
   const rect = (e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; };
   const qa = (sel) => roots.flatMap((r) => [...r.querySelectorAll(sel)]);
   const out = {stage: 'none', scroll: [window.scrollX, window.scrollY],
+               viewport: [window.innerWidth, window.innerHeight],
                tiles: [], icon: null, refresh: null, checkbox: null, result: null};
   const tiles = qa('.nine-content-img').filter(visible);
   if (tiles.length) {
@@ -98,6 +113,32 @@ STATE_JS = r"""
     out.loading = qa('.nine-content-loading').some(visible);
     if (qa('.nine-success').some(visible)) out.result = 'success';
     else if (qa('.nine-fail').some(visible)) out.result = 'fail';
+    return out;
+  }
+  // "Click the following icons from left to right in sequence" — a
+  // GeeTest-style panel in the light DOM: one 286x316 sprite painted as
+  // the background of both the 286x286 picture and the 30px icon strip.
+  const pic = qa('.captcha_click_wrapper .pic_wrapper').find(visible);
+  if (pic) {
+    out.stage = 'icon_click';
+    out.image = rect(pic);
+    const strip = qa('.captcha_click_wrapper .pic_elg_wrapper').find(visible);
+    out.icons = strip ? rect(strip) : null;
+    const confirm = qa('.captcha_click_confirm').find(visible);
+    out.confirm = confirm ? rect(confirm) : null;
+    const refresh = qa('.captcha_click_refresh').find(visible);
+    out.refresh = refresh ? rect(refresh) : null;
+    const bg = getComputedStyle(pic).backgroundImage;
+    out.srcs = bg && bg !== 'none' ? [bg] : [];
+    // A CSS background has no load event; after a refresh the new URL is
+    // set before the sprite arrives (live: blank white screenshots went
+    // to the solver). Probe the same URL — it resolves from cache once
+    // the background has actually loaded.
+    const m = /url\(["']?(.*?)["']?\)/.exec(bg || '');
+    if (m) { const probe = new Image(); probe.src = m[1]; out.loaded = probe.complete && probe.naturalWidth > 0; }
+    else out.loaded = false;
+    const tips = qa('.captcha_click_tips_box')[0];
+    out.tips = tips ? (tips.textContent || '').trim() : '';
     return out;
   }
   for (const r of roots) {
@@ -167,6 +208,46 @@ def checkbox_point(label_rect: Sequence[float]) -> tuple:
     """The checkbox square sits just left of its label (live: square at
     x≈772, label starting at x=793, 19px tall)."""
     return label_rect[0] - 20, label_rect[1] + label_rect[3] / 2
+
+
+def png_size(png: bytes) -> tuple:
+    """(width, height) from a PNG's IHDR — screenshots come back at the
+    device pixel ratio (2x on a Retina Mac), not in CSS px."""
+    if len(png) >= 24 and png[:8] == b"\x89PNG\r\n\x1a\n":
+        return int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
+    return 0, 0
+
+
+def build_coordinates_task(image_png: bytes, icons_png: bytes) -> dict:
+    return {
+        "type": "CoordinatesTask",
+        "body": base64.b64encode(image_png).decode(),
+        "imgInstructions": base64.b64encode(icons_png).decode(),
+        "comment": SEQUENCE_COMMENT,
+    }
+
+
+def parse_coordinates(solution: str, image_png: bytes, image_rect: Sequence[float]) -> List[tuple]:
+    """CoordinatesTask's `{"coordinates": [{"x":..,"y":..}, ...]}` are in the
+    screenshot's own pixels, in click order; map them back to viewport
+    CSS px. Points outside the image are dropped."""
+    try:
+        data = json.loads(solution)
+    except (TypeError, ValueError):
+        return []
+    raw = data.get("coordinates") if isinstance(data, dict) else None
+    w, h = png_size(image_png)
+    sx = (w / image_rect[2]) if w and image_rect[2] else 1.0
+    sy = (h / image_rect[3]) if h and image_rect[3] else 1.0
+    points = []
+    for pt in raw or []:
+        try:
+            x, y = float(pt["x"]) / sx, float(pt["y"]) / sy
+        except (TypeError, ValueError, KeyError):
+            continue
+        if 0 <= x <= image_rect[2] and 0 <= y <= image_rect[3]:
+            points.append((image_rect[0] + x, image_rect[1] + y))
+    return points
 
 
 def build_grid_task(grid_png: bytes, icon_png: Optional[bytes]) -> dict:
@@ -240,18 +321,35 @@ def _left_gateway(url: str, _state: dict) -> bool:
     return not on_challenge(url)
 
 
+def _center(rect: Sequence[float]) -> tuple:
+    return rect[0] + rect[2] / 2, rect[1] + rect[3] / 2
+
+
+def _ready(stage_state: dict, previous_srcs) -> bool:
+    """A fresh, fully loaded widget of either solvable kind."""
+    stage = stage_state.get("stage")
+    if stage == "nine_captcha":
+        return (len(stage_state.get("tiles") or []) == GRID_ROWS * GRID_COLUMNS and not stage_state.get("loading")
+                and not stage_state.get("result") and stage_state.get("srcs") != previous_srcs)
+    if stage == "icon_click":
+        return bool(stage_state.get("image") and stage_state.get("icons") and stage_state.get("srcs")
+                    and stage_state.get("loaded") and stage_state.get("srcs") != previous_srcs)
+    return False
+
+
 async def pass_risk_challenge(
     driver: ChallengeDriver, client: Optional[TwoCaptchaClient], *, max_rounds: int = 5,
     rng: Optional[random.Random] = None, solve: Optional[Callable[[dict], Awaitable[str]]] = None,
     step_timeout: float = 12.0, redirect_timeout: float = 20.0, debug_dir: Optional[str] = None,
 ) -> ChallengeOutcome:
-    """Drives one_pass -> nine_captcha until the page leaves
-    `/risk/challenge`. Never raises for anything page- or solver-side: a
-    failure comes back as `passed=False` with a `detail`, and the caller
-    keeps its normal blocked-outcome handling (CLAUDE.md §6).
+    """Drives one_pass -> (nine_captcha | icon_click) until the page leaves
+    `/risk/challenge`. Each round handles whichever solvable widget SHEIN
+    is showing at that moment. Never raises for anything page- or
+    solver-side: a failure comes back as `passed=False` with a `detail`,
+    and the caller keeps its normal blocked-outcome handling (CLAUDE.md §6).
 
-    `debug_dir`, when set, receives each round's grid/icon PNGs and the
-    grid as it looked after the clicks, for checking answers by eye.
+    `debug_dir`, when set, receives each round's images and the widget as
+    it looked after the clicks, for checking answers by eye.
 
     `solve` exists for tests; by default it runs the blocking
     `client.solve_and_wait` on a worker thread so an async engine's event
@@ -264,7 +362,7 @@ async def pass_risk_challenge(
         return outcome
     if solve is None:
         if client is None or not client.api_key:
-            outcome.detail = "no TWOCAPTCHA_KEY — the image grid step cannot be solved"
+            outcome.detail = "no TWOCAPTCHA_KEY — the image step cannot be solved"
         else:
             async def solve(task: dict) -> str:  # noqa: E306
                 return await asyncio.to_thread(client.solve_and_wait, task, 5.0, 180.0)
@@ -278,12 +376,108 @@ async def pass_risk_challenge(
             except OSError as exc:
                 log.debug("could not write %s: %s", name, exc)
 
+    async def refresh(state: dict) -> None:
+        if state.get("refresh"):
+            await driver.click(*_center(state["refresh"]))
+
+    async def nine_round(round_num: int, state: dict) -> Optional[str]:
+        """None = keep going; otherwise a terminal detail string."""
+        tiles = order_tiles(state.get("tiles") or [])
+        scroll = state.get("scroll") or (0, 0)
+        grid_png = await driver.screenshot(grid_clip(tiles, scroll))
+        icon_png = await driver.screenshot(rect_clip(state["icon"], scroll)) if state.get("icon") else None
+        dump(f"round{round_num}_grid.png", grid_png)
+        dump(f"round{round_num}_icon.png", icon_png)
+        try:
+            solution = await solve(build_grid_task(grid_png, icon_png))
+        except TwoCaptchaAuthError as exc:
+            return f"2Captcha auth error: {exc}"
+        except TwoCaptchaError as exc:
+            log.warning("SHEIN risk challenge round %d: GridTask failed: %s", round_num, exc)
+            await refresh(state)
+            return None
+        outcome.solves += 1
+        clicks = parse_grid_clicks(solution)
+        log.info("SHEIN risk challenge round %d: GridTask answer %s.", round_num, clicks)
+        if len(clicks) != EXPECTED_PICKS:
+            log.warning(
+                "SHEIN risk challenge round %d: answer picks %d tile(s), not %d — refreshing the grid "
+                "instead of submitting a certainly-wrong answer.", round_num, len(clicks), EXPECTED_PICKS,
+            )
+            await refresh(state)
+            return None
+        for x, y in tile_click_points(clicks, tiles, rng):
+            await driver.click(x, y)
+            await driver.sleep(rng.uniform(0.25, 0.6))
+        if debug_dir:
+            try:
+                dump(f"round{round_num}_after.png", await driver.screenshot(grid_clip(tiles, scroll)))
+            except Exception as exc:  # noqa: BLE001 — debug only; the page may already be redirecting
+                log.debug("after-click screenshot failed: %s", exc)
+        url, after = await _wait_for(
+            driver, lambda u, s: not on_challenge(u) or s.get("result") in ("success", "fail"), step_timeout,
+        )
+        if not on_challenge(url) or after.get("result") == "success":
+            return "success"
+        if after.get("result") == "fail":
+            log.warning("SHEIN risk challenge round %d rejected by SHEIN — retrying with fresh images.", round_num)
+        else:
+            # Nothing auto-submitted — ask for a new set.
+            await refresh(after)
+        return None
+
+    async def icon_click_round(round_num: int, state: dict) -> Optional[str]:
+        scroll = state.get("scroll") or (0, 0)
+        image_png = await driver.screenshot(rect_clip(state["image"], scroll))
+        icons_png = await driver.screenshot(rect_clip(state["icons"], scroll))
+        dump(f"round{round_num}_image.png", image_png)
+        dump(f"round{round_num}_icons.png", icons_png)
+        try:
+            solution = await solve(build_coordinates_task(image_png, icons_png))
+        except TwoCaptchaAuthError as exc:
+            return f"2Captcha auth error: {exc}"
+        except TwoCaptchaError as exc:
+            log.warning("SHEIN risk challenge round %d: CoordinatesTask failed: %s", round_num, exc)
+            await refresh(state)
+            return None
+        outcome.solves += 1
+        points = parse_coordinates(solution, image_png, state["image"])
+        log.info("SHEIN risk challenge round %d: CoordinatesTask answer %d point(s).", round_num, len(points))
+        if len(points) < MIN_SEQUENCE_POINTS:
+            log.warning("SHEIN risk challenge round %d: too few points — refreshing instead of submitting.", round_num)
+            await refresh(state)
+            return None
+        for x, y in points:
+            await driver.click(x, y)
+            await driver.sleep(rng.uniform(0.35, 0.8))
+        if debug_dir:
+            try:
+                dump(f"round{round_num}_after.png", await driver.screenshot(rect_clip(state["image"], scroll)))
+            except Exception as exc:  # noqa: BLE001
+                log.debug("after-click screenshot failed: %s", exc)
+        if state.get("confirm"):
+            await driver.click(*_center(state["confirm"]))
+        await driver.sleep(1.0)
+        _u, shown = await _read(driver)
+        if shown.get("tips"):
+            log.info("SHEIN risk challenge round %d: widget says %r.", round_num, shown["tips"])
+        srcs = state.get("srcs")
+        url, after = await _wait_for(
+            driver, lambda u, s: not on_challenge(u) or (s.get("srcs") and s.get("srcs") != srcs)
+            or s.get("stage") not in ("icon_click", "none"), step_timeout,
+        )
+        if not on_challenge(url):
+            return "success"
+        log.warning("SHEIN risk challenge round %d not accepted (widget said %r) — retrying with the next image.",
+                    round_num, after.get("tips") or "")
+        return None
+
     try:
         # The widget is injected by SHEIN's own bundle after
         # domcontentloaded — live, it was still absent ~5s in on a slow
-        # profile, so wait for either stage to render first.
+        # profile, so wait for any stage to render first.
         url, state = await _wait_for(
-            driver, lambda u, s: not on_challenge(u) or s.get("stage") in ("one_pass", "nine_captcha"), step_timeout,
+            driver, lambda u, s: not on_challenge(u) or s.get("stage") in STAGES, step_timeout,
         )
         if not on_challenge(url):
             outcome.passed = True
@@ -295,15 +489,19 @@ async def pass_risk_challenge(
             log.info("SHEIN risk challenge: clicking the 'I am human' checkbox.")
             await driver.click(x, y)
             url, state = await _wait_for(
-                driver, lambda u, s: not on_challenge(u) or s.get("stage") == "nine_captcha", step_timeout,
+                driver, lambda u, s: not on_challenge(u) or s.get("stage") in SOLVABLE_STAGES, step_timeout,
             )
             if not on_challenge(url):
                 outcome.passed = True
                 outcome.detail = "passed at the checkbox step"
                 return outcome
 
-        if state.get("stage") != "nine_captcha":
+        if state.get("stage") not in SOLVABLE_STAGES:
             outcome.detail = f"unrecognised challenge stage {state.get('stage')!r}"
+            if debug_dir and state.get("viewport"):
+                w, h = state["viewport"]
+                sx, sy = state.get("scroll") or (0, 0)
+                dump("unrecognised.png", await driver.screenshot({"x": sx, "y": sy, "width": w, "height": h}))
             return outcome
         if solve is None:
             return outcome
@@ -311,77 +509,30 @@ async def pass_risk_challenge(
         previous_srcs = None
         for round_num in range(1, max_rounds + 1):
             outcome.rounds = round_num
-            # Wait for a fresh, fully loaded set of nine tiles (after a
-            # failed round the widget swaps images in by itself).
             url, state = await _wait_for(
-                driver,
-                lambda u, s: not on_challenge(u) or (
-                    s.get("stage") == "nine_captcha" and len(s.get("tiles") or []) == GRID_ROWS * GRID_COLUMNS
-                    and not s.get("loading") and not s.get("result") and s.get("srcs") != previous_srcs
-                ),
-                step_timeout,
+                driver, lambda u, s: not on_challenge(u) or _ready(s, previous_srcs), step_timeout,
             )
             if not on_challenge(url):
                 outcome.passed = True
                 return outcome
-            tiles = order_tiles(state.get("tiles") or [])
-            if len(tiles) != GRID_ROWS * GRID_COLUMNS:
-                outcome.detail = f"expected 9 grid tiles, found {len(tiles)}"
+            if not _ready(state, previous_srcs):
+                outcome.detail = f"no fresh solvable widget (stage {state.get('stage')!r})"
                 return outcome
             previous_srcs = state.get("srcs")
-            scroll = state.get("scroll") or (0, 0)
-            grid_png = await driver.screenshot(grid_clip(tiles, scroll))
-            icon_png = await driver.screenshot(rect_clip(state["icon"], scroll)) if state.get("icon") else None
-            dump(f"round{round_num}_grid.png", grid_png)
-            dump(f"round{round_num}_icon.png", icon_png)
-            try:
-                solution = await solve(build_grid_task(grid_png, icon_png))
-            except TwoCaptchaAuthError as exc:
-                outcome.detail = f"2Captcha auth error: {exc}"
-                return outcome
-            except TwoCaptchaError as exc:
-                log.warning("SHEIN risk challenge round %d: GridTask failed: %s", round_num, exc)
-                if state.get("refresh"):
-                    r = state["refresh"]
-                    await driver.click(r[0] + r[2] / 2, r[1] + r[3] / 2)
-                continue
-            outcome.solves += 1
-            clicks = parse_grid_clicks(solution)
-            log.info("SHEIN risk challenge round %d: GridTask answer %s.", round_num, clicks)
-            if len(clicks) != EXPECTED_PICKS:
-                log.warning(
-                    "SHEIN risk challenge round %d: answer picks %d tile(s), not %d — refreshing the grid "
-                    "instead of submitting a certainly-wrong answer.", round_num, len(clicks), EXPECTED_PICKS,
-                )
-                if state.get("refresh"):
-                    r = state["refresh"]
-                    await driver.click(r[0] + r[2] / 2, r[1] + r[3] / 2)
-                continue
-            for x, y in tile_click_points(clicks, tiles, rng):
-                await driver.click(x, y)
-                await driver.sleep(rng.uniform(0.25, 0.6))
-            if debug_dir:
-                try:
-                    dump(f"round{round_num}_after.png", await driver.screenshot(grid_clip(tiles, scroll)))
-                except Exception as exc:  # noqa: BLE001 — debug only; the page may already be redirecting
-                    log.debug("after-click screenshot failed: %s", exc)
-
-            url, state = await _wait_for(
-                driver, lambda u, s: not on_challenge(u) or s.get("result") in ("success", "fail"), step_timeout,
-            )
-            if not on_challenge(url) or state.get("result") == "success":
+            if state["stage"] == "nine_captcha":
+                result = await nine_round(round_num, state)
+            else:
+                result = await icon_click_round(round_num, state)
+            if result == "success":
                 url, _ = await _wait_for(driver, _left_gateway, redirect_timeout)
                 outcome.passed = not on_challenge(url)
-                outcome.detail = "passed at the image grid step" if outcome.passed else "success shown but no redirect"
+                outcome.detail = (f"passed at the {state['stage']} step" if outcome.passed
+                                  else "success shown but no redirect")
                 return outcome
-            if state.get("result") == "fail":
-                log.warning("SHEIN risk challenge round %d rejected by SHEIN — retrying with fresh images.", round_num)
-            elif state.get("refresh"):
-                # Nothing auto-submitted (the answer picked fewer tiles
-                # than SHEIN wanted) — ask for a new set.
-                r = state["refresh"]
-                await driver.click(r[0] + r[2] / 2, r[1] + r[3] / 2)
-        outcome.detail = outcome.detail or f"image grid not passed after {max_rounds} round(s)"
+            if result is not None:
+                outcome.detail = result
+                return outcome
+        outcome.detail = outcome.detail or f"image step not passed after {max_rounds} round(s)"
         return outcome
     except Exception as exc:  # noqa: BLE001 — a driver failure degrades to "still blocked", never a crash
         outcome.detail = f"challenge driver error: {exc}"

@@ -1991,6 +1991,94 @@ def _():
         assert selenium_scraper._maybe_pass_risk_challenge(d, args, None) is False, argv
 
 
+def _png_header(w, h):
+    return b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + w.to_bytes(4, "big") + h.to_bytes(4, "big") + b"\x08\x02\x00\x00\x00"
+
+
+@check("shein_challenge icon_click helpers: PNG size read, CoordinatesTask payload, and solver points mapped from device px (2x Retina, seen live) back to viewport CSS px, dropping out-of-image points")
+def _():
+    assert shein_challenge.png_size(_png_header(572, 572)) == (572, 572)
+    assert shein_challenge.png_size(b"nope") == (0, 0)
+    task = shein_challenge.build_coordinates_task(b"img", b"icons")
+    assert task["type"] == "CoordinatesTask" and task["imgInstructions"] == "aWNvbnM=" and "order" in task["comment"]
+    sol = json.dumps({"coordinates": [{"x": 572, "y": 286}, {"x": "100", "y": 50}, {"x": 900, "y": 10}, {"y": 1}]})
+    pts = shein_challenge.parse_coordinates(sol, _png_header(572, 572), [457, 155, 286, 286])
+    assert pts == [(457 + 286, 155 + 143), (457 + 50, 155 + 25)], pts
+    assert shein_challenge.parse_coordinates("garbage", b"", [0, 0, 10, 10]) == []
+
+
+class _FakeIconClick(_FakeChallenge):
+    """one_pass -> icon_click; Confirm submits; `grid_results` decides each."""
+
+    def __init__(self, *, grid_results, loaded_after=0):
+        super().__init__(grid_results=grid_results)
+        self.picks = []
+        self.loaded_after = loaded_after
+        self.reads = 0
+
+    async def state(self):
+        if self.stage == "icon_click":
+            self.reads += 1
+            return {"stage": "icon_click", "image": [457, 155, 286, 286], "icons": [457, 119, 286, 30],
+                    "confirm": [457, 449, 286, 36], "refresh": [457, 494, 286, 36],
+                    "srcs": [f"sprite{self.image_set}"], "loaded": self.reads > self.loaded_after,
+                    "tips": "", "scroll": [0, 0]}
+        return await super().state()
+
+    async def screenshot(self, clip):
+        self.shots.append(clip)
+        return _png_header(int(clip["width"] * 2), int(clip["height"] * 2))
+
+    async def click(self, x, y):
+        self.clicks.append((x, y))
+        if self.stage == "one_pass":
+            self.stage = "icon_click"
+            return
+        if 449 <= y <= 485:  # Confirm
+            if self.grid_results.pop(0) == "success":
+                self.redirect_in = 1
+            else:
+                self.image_set += 1
+                self.reads = 0
+            self.picks = []
+        elif 494 <= y <= 530:  # Refresh
+            self.image_set += 1
+            self.reads = 0
+        else:
+            self.picks.append((x, y))
+
+
+@check("shein_challenge: the 'click icons in sequence' widget (live 2026-09-30, local Chrome) — waits for the sprite to LOAD (blank screenshots went to the solver live), clicks the points in order, presses Confirm, retries a rejected round, passes on redirect")
+def _():
+    fake = _FakeIconClick(grid_results=["fail", "success"], loaded_after=2)
+    answers = [{"coordinates": [{"x": 100, "y": 100}, {"x": 300, "y": 200}, {"x": 500, "y": 400}, {"x": 60, "y": 520}]}] * 2
+    calls = []
+
+    async def solve(task):
+        calls.append(task)
+        return json.dumps(answers[len(calls) - 1])
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=3, solve=solve, step_timeout=3, redirect_timeout=5))
+    assert out.passed and out.solves == 2, out
+    assert all(c["type"] == "CoordinatesTask" for c in calls)
+    first_round = fake.clicks[1:6]
+    assert first_round[:4] == [(457 + 50, 155 + 50), (457 + 150, 155 + 100), (457 + 250, 155 + 200), (457 + 30, 155 + 260)], first_round
+    assert first_round[4] == (457 + 143, 449 + 18), "Confirm must be pressed after the points"
+
+
+@check("shein_challenge: an icon_click answer with fewer than 2 points is never submitted — refresh instead of Confirm")
+def _():
+    fake = _FakeIconClick(grid_results=["success"])
+    answers = [{"coordinates": [{"x": 10, "y": 10}]}, {"coordinates": [{"x": 10, "y": 10}, {"x": 200, "y": 200}, {"x": 400, "y": 400}]}]
+    calls = []
+
+    async def solve(task):
+        calls.append(task)
+        return json.dumps(answers[len(calls) - 1])
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=3, solve=solve, step_timeout=3, redirect_timeout=5))
+    assert out.passed and len(calls) == 2, out
+    assert fake.clicks[1] == (457 + 143, 494 + 18), f"first action should be Refresh, got {fake.clicks[1]}"
+
+
 _NINE_CAPTCHA_REPLICA = """<!doctype html><html><body>
 <img class="header-content-img" style="display:none" src="data:,">
 <nine-captcha-custom id="nine-captcha-custom"></nine-captcha-custom>
@@ -2010,6 +2098,19 @@ root.innerHTML = `<div class="sui-dialog risk-nine-dialog__content"><div style="
     <div class="nine-fail" style="display:none">Authentication failed</div></div>
   <div class="nine-refresh"><span class="nine-refresh-word">refresh</span></div></div></div></div>`;
 </script></body></html>"""
+
+
+_SPRITE = "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs="
+_ICON_CLICK_REPLICA = f"""<!doctype html><html><body>
+<div class="geetest_panel"><div class="geetest_panel_box" id="self-click-x">
+ <div class="captcha_click_wrapper" style="position:relative;margin:21px 14px;overflow:hidden;font-size:0;width:286px">
+  <div class="title_wrapper" style="font-size:14px;height:32px">Please click the following icons from left to right in sequence.</div>
+  <div class="pic_elg_wrapper" style="height:30px;background-image:url('{_SPRITE}');background-size:286px 316px"></div>
+  <div class="pic_wrapper" style="height:286px;background-image:url('{_SPRITE}');background-size:286px 316px"></div>
+  <div class="captcha_click_tips_box"> </div></div>
+ <div class="captcha_btn_click_wrapper"><div class="captcha_click_confirm" style="height:36px;width:286px"><span>Confirm</span></div></div>
+ <div class="captcha_btn_click_wrapper"><div class="captcha_click_refresh" style="height:36px;width:286px">Refresh</div></div>
+</div></div></body></html>"""
 
 
 @check("STATE_JS in a REAL headless Chromium against a replica of the live nine_captcha shadow DOM (class names from the 2026-09-30 capture): finds 9 tiles, the VISIBLE icon despite an earlier hidden decoy (the live bug), and each result state; skips if Chromium is unavailable")
@@ -2032,19 +2133,25 @@ def _():
             failed = await page.evaluate(shein_challenge.STATE_JS)
             await page.set_content('<div><span></span><span>I am human</span></div>')
             one_pass = await page.evaluate(shein_challenge.STATE_JS)
+            await page.set_content(_ICON_CLICK_REPLICA)
+            await page.wait_for_timeout(300)
+            icon_click = await page.evaluate(shein_challenge.STATE_JS)
             await browser.close()
-            return first, failed, one_pass
+            return first, failed, one_pass, icon_click
 
     res = asyncio.run(go())
     if res is None:
         return
-    first, failed, one_pass = res
+    first, failed, one_pass, icon_click = res
     assert first["stage"] == "nine_captcha" and len(first["tiles"]) == 9, first
     assert first["icon"] and first["icon"][2] == 54, f"visible icon not found: {first['icon']}"
     assert first["refresh"] and first["result"] is None and first["loading"] is False
     assert len(set(first["srcs"])) == 9
     assert failed["result"] == "fail"
     assert one_pass["stage"] == "one_pass" and one_pass["checkbox"], one_pass
+    assert icon_click["stage"] == "icon_click", icon_click
+    assert [round(v) for v in icon_click["image"][2:]] == [286, 286] and round(icon_click["icons"][3]) == 30, icon_click
+    assert icon_click["confirm"] and icon_click["refresh"] and icon_click["loaded"] is True, icon_click
 
 
 def run() -> int:

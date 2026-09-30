@@ -159,8 +159,11 @@ icon file means the widget markup changed (see `STATE_JS`). Every
 round logging `validation/check: code=9001`, including correct answers,
 means SHEIN has written this profile off: switch profiles. Confirmed
 live for Playwright on 2026-09-30 (2 of 3 fresh profiles passed, each on
-round 3); Selenium and Puppeteer still need this
-run.
+round 3). Puppeteer: scraped live over CDP,
+challenge path not yet hit. Selenium: no Browser API (no credentials in
+`debuggerAddress`); on a local `--headful` Chrome through a residential
+exit it reached the `icon_click` widget, and SHEIN rejected correct
+answers from it.
 
 ## 7. The residential proxy (`--proxy` / `SHEIN_PROXY`), for real
 

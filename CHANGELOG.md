@@ -9,6 +9,36 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Added — 2026-09-30, third challenge widget (`icon_click`), plus the first live Selenium and Puppeteer runs
+- **Puppeteer, live over `--cdp-endpoint`**: connected and scraped 10
+  products, `status=complete`. That profile was already verified, so the
+  challenge path itself has not run under Puppeteer yet.
+- **Selenium cannot use the Browser API.** chromedriver's `debuggerAddress`
+  takes a bare host:port with no credentials, and `run()` already refuses
+  that. It was run live against a local Chrome instead:
+  - A direct connection and headless Chrome through a US residential exit
+    both got `/risk/action/limit` (a plain rate limit, nothing to solve).
+  - `--headful` through the residential exit got the real
+    `/risk/challenge`. The checkbox click registered, and SHEIN then
+    showed a THIRD widget this repo had not handled yet: "click the
+    following icons from left to right in sequence".
+- New `icon_click` stage in `shein_challenge.py`. It sends a 2Captcha
+  `CoordinatesTask` with the icon strip as `imgInstructions`, maps the
+  answer from device pixels back to CSS px (the PNG's own width, since
+  Retina screenshots are 2x), clicks the points in order and presses
+  Confirm. It waits for the sprite to actually load (probed via `new
+  Image()` on the background URL): live, three rounds' screenshots went
+  to the solver blank white before this. Answers with fewer than 2 points
+  are refreshed, not submitted. Every round now handles whichever widget
+  SHEIN shows, so the stages can alternate.
+- **Not passed live under Selenium.** After the load fix, all 5 rounds
+  got "Verification Failed", including answers checked correct by eye
+  (bike → deer → scissors → owl, in order). That is the same kind of risk
+  rejection as `9001` above. Most likely cause: the chromedriver-
+  controlled Chrome itself (`navigator.webdriver`), not the solver.
+- `smoke_test.py`: 87 → 90 checks, including a real-Chromium replica of
+  the `icon_click` panel.
+
 ### Added — 2026-09-30, automated pass of SHEIN's `/risk/challenge` (`shein_challenge.py`, `--risk-challenge-rounds`)
 - Prompted by Roman asking for the scraper to get past the blocked page
   itself. This reverses the 2026-09-29 scope note below ("stays a manual,

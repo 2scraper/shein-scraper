@@ -31,7 +31,12 @@ one or two correct answers. SHEIN sometimes rejects a correct answer
 pass:** a second fresh profile got `9001` on every submission, including
 correct ones. That is a risk-score rejection nothing on the page can fix;
 switch to another profile. Selenium and Puppeteer use
-the same module but have not been run live yet. With `--dump-html`, each
+the same module. Puppeteer has scraped live over CDP, but has not hit
+the challenge yet. Selenium cannot use the Browser API (chromedriver takes
+no credentials). On a local headful Chrome it reached a third widget
+("click the icons in sequence"), which is now solved via
+`CoordinatesTask`, but SHEIN rejected even correct answers from that
+browser. With `--dump-html`, each
 round's screenshots are saved under `<out>_challenge/`.
 
 **Live update 2026-09-29:** Playwright completed a real search through a
