@@ -116,7 +116,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--url", default=None, help="Full shein.com search/category/product URL (or set SHEIN_URL) — overrides --query/--category")
     p.add_argument("--query", default=None, help="Search term, e.g. 'summer dress'")
     p.add_argument("--category", default=None, help="A category path copied from shein.com navigation, e.g. 'Women Jeans-c-1934.html'")
-    p.add_argument("--sort", choices=sp.SORT_VALUES, default="relevance", help="Recorded in the sidecar only — NOT sent to SHEIN yet (its query parameter is unconfirmed, see shein_parser.py); diff_runs refuses runs whose sort differs")
+    p.add_argument("--sort", choices=sp.SORT_VALUES, default="relevance", help='Recorded in the results (.meta.json) only; not sent to SHEIN yet, its URL parameter is unconfirmed. diff_runs refuses runs with different sorts')
     p.add_argument("--max-results", type=_positive_int, default=30, help="Cap on number of products scraped")
     p.add_argument("--max-scrolls", type=_positive_int, default=20, help="Hard cap on scroll rounds, independent of --stall-rounds")
     p.add_argument("--stall-rounds", type=_positive_int, default=4, help="Stop after this many consecutive scrolls add no new product")
@@ -126,23 +126,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--retries", type=_nonnegative_int, default=2, help="Retries on initial navigation failure")
     p.add_argument("--retry-delay", type=_nonnegative_float, default=3.0)
     p.add_argument("--delay-jitter", type=_nonnegative_float, default=0.3, help="Relative +/-jitter applied to --scroll-delay/--retry-delay/--rate-limit-cooldown so repeated waits are not perfectly periodic (0 disables, e.g. for reproducible tests)")
-    p.add_argument("--rate-limit-cooldown", type=_nonnegative_float, default=0.0, help="On SHEIN's own rate-limit gate (/risk/action/limit), wait this many seconds and retry ONCE on the same session before giving up, honoring the ~5 minute cooldown observed live (see TESTING.md). Off (0) by default — this can make a single invocation take minutes; consider e.g. 300 for unattended/scheduled runs.")
+    p.add_argument("--rate-limit-cooldown", type=_nonnegative_float, default=0.0, help="After SHEIN's rate limit (/risk/action/limit), wait this many seconds and retry once on the same session (0 = off; e.g. 300 for scheduled runs)")
     p.add_argument(
         "--block-retries", type=_nonnegative_int, default=2,
-        help="On a blocked, zero-product outcome, retry on the SAME browser/CDP session (same exit "
-             "IP, same device identity) this many extra times before giving up — 'retry before you "
-             "rotate', not a proxy/session swap. Sibling family member etsy-scraper measured this "
-             "directly against its own DataDome-protected site: one profile was refused twice "
-             "(t=bv) then cleared on the third attempt onward — see its README. A fresh --proxy/"
-             "--cdp-endpoint identity is a separate, manual decision the caller makes between runs, "
-             "not something this flag does automatically (see README's 'Known limitations').",
+        help='Retries on the SAME browser session after a blocked page with no products, before giving up (a different proxy/profile is your call between runs)',
     )
     p.add_argument(
         "--risk-challenge-rounds", type=_nonnegative_int, default=5,
-        help="On SHEIN's own /risk/challenge gateway, click its 'I am human' checkbox and solve up to "
-             "this many rounds of its 3x3 image grid via 2Captcha GridTask (needs TWOCAPTCHA_KEY; the "
-             "checkbox step alone needs no key). 0 disables. Skipped with --solve-captcha off. See "
-             "shein_challenge.py.",
+        help="Puzzle rounds per SHEIN /risk/challenge: the 'I am human' checkbox is free; the image grid and icon puzzle are solved via 2Captcha (needs TWOCAPTCHA_KEY). 0 = don't solve",
     )
     p.add_argument(
         "--max-solves", type=_nonnegative_int, default=8,
@@ -157,50 +148,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--captcha-api", default=None, help="Override the 2Captcha API base URL (testing only)")
     p.add_argument("--solve-captcha", choices=["off", "when-blocked", "always"], default="when-blocked")
     p.add_argument("--min-score", type=float, default=0.3, help="Minimum acceptable reCAPTCHA v3 score (2Captcha's minScore task field)")
-    p.add_argument("--cdp-endpoint", default=None, help="Connect to a remote CDP session (e.g. the 2Captcha Scraping Browser API) instead of launching locally (or set SHEIN_CDP_ENDPOINT) — opt-in, not required for a normal run")
-    p.add_argument("--fingerprint", action="store_true", help="Fetch and apply a 2Captcha Fingerprint API profile (ignored with --cdp-endpoint — see fingerprint_client.refuse_if_cdp)")
+    p.add_argument("--cdp-endpoint", default=None, help='Connect to a 2Captcha Scraping Browser API profile (ws://...) instead of launching a local browser (or set SHEIN_CDP_ENDPOINT)')
+    p.add_argument("--fingerprint", action="store_true", help='Apply a 2Captcha Fingerprint API user agent to a local browser (ignored with --cdp-endpoint, which brings its own)')
     p.add_argument("--fp-tags", default=None, help="Fingerprint API filter, e.g. 'Windows,Chrome'")
     p.add_argument("--fp-country", default=None, help="Fingerprint API filter, e.g. 'us'")
     p.add_argument(
         "--scraper-api", action="store_true",
-        help="Fetch via 2Captcha's Scraper API (scraper.2captcha.com) instead of launching any local "
-             "or --cdp-endpoint browser — a single browserless HTTP call, run entirely on 2Captcha's "
-             "own infrastructure. Requires --twocaptcha-key/TWOCAPTCHA_KEY. A GENUINELY DIFFERENT "
-             "product from --cdp-endpoint's Scraping Browser API — see scraper_api_client.py's module "
-             "docstring. Confirmed live 2026-09-22: real shein.com pages come back, but this is NOT a "
-             "confirmed bypass — the same /risk/challenge interstitial this repo already knows about "
-             "shows up here too, intermittently (see --block-retries). By itself this mode has no "
-             "captcha solving (a solved token has nothing to inject into — no live page/DOM here) and "
-             "no documented way to pin the exit country/locale, so a clean (non-blocked) response can "
-             "still land on a non-US shein.com locale this repo's parser doesn't recognise. See "
-             "--scraper-api-cdp for the fix to both. --max-scrolls/--stall-rounds/--scroll-delay/"
-             "--proxy/--cdp-endpoint/--fingerprint are all IGNORED in this mode (a single static fetch "
-             "has no scroll loop, and brings its own exit IP/device) — set together, they log a "
-             "warning rather than silently doing nothing.",
+        help="Fetch through 2Captcha's Scraper API instead of a browser: one page per run, no scrolling, no local captcha solving (needs TWOCAPTCHA_KEY). --proxy/--cdp-endpoint/--fingerprint are ignored",
     )
     p.add_argument("--scraper-api-timeout", type=_positive_int, default=60, help="Seconds 2Captcha itself waits for the target page to finish loading (1-120, their limit)")
     p.add_argument("--scraper-api-url", default=None, help="Override the Scraper API base URL (testing only)")
     p.add_argument(
         "--scraper-api-cdp", action="store_true",
-        help="Route --scraper-api's fetch through a 2Captcha Scraping Browser CDP session (their "
-             "'cdpurl' field on the Scraper API task) instead of their own default browser pool — "
-             "chaining two 2Captcha products together, not pointing this at a caller-supplied "
-             "--cdp-endpoint (that flag stays ignored in --scraper-api mode, see its help text: an "
-             "arbitrary CDP session isn't known to support this field the way 2Captcha's own does). "
-             "This selects an existing country-configured Browser API account and may enable "
-             "its captcha auto-solve — see scraper_api_client.TwoCaptchaClient.scraping_browser_connection_url and "
-             "scrape_url's own docstrings for exactly what 2Captcha documents. Requires "
-             "--scraper-api. WIRED BUT NOT YET LIVE-TESTED: the underlying 'cdpurl' field is "
-             "documented by 2Captcha but this codebase had never exercised it before this flag "
-             "existed — confirm it live before relying on it (TESTING.md). If the Scraping "
-             "Browser session itself fails (a Scraper API HTTP error, not a normal blocked-with-"
-             "zero-products outcome), this run automatically falls back to --scraper-api's plain "
-             "default pool once, logged loudly, rather than giving up outright — losing country/"
-             "profile selection and 2Captcha's own captcha auto-solve for the rest of that run.",
+        help='With --scraper-api: route the fetch through a Scraping Browser profile (its captcha auto-solve applies). Falls back once to the plain pool if that session fails',
     )
-    p.add_argument("--scraper-api-country", default=None, help="Require an existing Browser API account configured for this country, e.g. us; does not change its proxy country (ignored without --scraper-api-cdp)")
+    p.add_argument("--scraper-api-country", default=None, help='With --scraper-api-cdp: use an existing Browser API account configured for this country, e.g. us')
     p.add_argument("--scraper-api-account-id", type=_positive_int, default=None, help="Existing 2Captcha Browser API account ID for --scraper-api-cdp; required when multiple accounts match the requested country")
-    p.add_argument("--scraper-api-profile-id", default=None, help="Reuse a specific Scraping Browser profile id across runs for --scraper-api-cdp, instead of the default pool (ignored without --scraper-api-cdp; see scraping_browser_connection_url's docstring on why reuse is preferred)")
+    p.add_argument("--scraper-api-profile-id", default=None, help='With --scraper-api-cdp: reuse this Scraping Browser profile across runs (recommended; a fresh profile is challenged more)')
     p.add_argument("--allow-empty", action="store_true", help="Write output even if zero products were found")
     p.add_argument("--dump-html", action="store_true", help="Save the final accumulated page HTML next to --out, on success too")
     p.add_argument("--headless", dest="headless", action="store_true", default=True)

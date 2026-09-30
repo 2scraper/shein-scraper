@@ -6,620 +6,247 @@
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![licence](https://img.shields.io/badge/licence-MIT-green)
 ![engines](https://img.shields.io/badge/engines-Playwright%20%7C%20Selenium%20%7C%20Puppeteer-informational)
-![local-first](https://img.shields.io/badge/local--first-yes-success)
 
-shein.com fashion-marketplace product scraper: a search term, a category, or
-a single product URL in, a flat list of products out. Three engines
-(Playwright primary, Selenium and Puppeteer/pyppeteer for parity), JSON or
-CSV output, an open, documented `Product` schema. Part of the
-[2scraper](https://github.com/2scraper) family — same output contract, exit
-codes, and family modules as `stockx-scraper` / `skyscanner-scraper` /
-`lidl-scraper` / `perplexity-scraper`.
+**Scrape SHEIN product listings into clean JSON or CSV.** Give it a search
+term, a category or a product URL; get back one row per product: title,
+brand, current and original price, discount, rating, review count, stock
+and shipping flags, image and product link.
 
-## Read this before trusting a run
+It is built for price monitoring and catalogue research on
+[us.shein.com](https://us.shein.com):
 
-**Live update 2026-09-30 (evening):** after the audit fixes, a fresh US
-profile passed the icon-sequence challenge on round 3 and returned 10
-priced products; across 5 fresh profiles the challenge was passed on 3.
-Puppeteer reconnected through a locked profile and completed too.
+- **Real data, not scraped markup.** Listings come from the page's own
+  embedded product data (`window.gbRawData`), product pages from their
+  schema.org JSON-LD, so prices and ids are the site's own values.
+- **Gets past SHEIN's bot check.** SHEIN's own `/risk/challenge` gate is
+  handled automatically: the "I am human" checkbox, the 3x3 "select the
+  images matching the icon" grid, and the "click the icons in order"
+  puzzle, the last two solved through [2Captcha](https://2captcha.com).
+- **Honest results.** A blocked, rate-limited or partial run says so in
+  its exit code and a `.meta.json` file next to the output. A run that
+  finds nothing never overwrites your last good data.
+- **Three browser engines** (Playwright, Selenium, Puppeteer) running one
+  shared scraping loop, a local browser or 2Captcha's **Scraping Browser
+  API** over CDP, rotating proxies, and a run-to-run diff tool.
 
-**Live update 2026-09-30: the `/risk/challenge` gateway is now passed
-automatically** (`shein_challenge.py`, `--risk-challenge-rounds`, default
-5). SHEIN's own two-step flow is an "I am human" checkbox, then, if the
-server escalates, a 3x3 "select all images according to the icon" grid.
-The scraper clicks the checkbox and solves the grid through a 2Captcha
-`GridTask` (needs `TWOCAPTCHA_KEY`). A Playwright `--cdp-endpoint` run
-passed on round 3 on two of three fresh US profiles and returned 10
-products with prices, exit `0`. On each profile SHEIN rejected the first
-one or two correct answers. SHEIN sometimes rejects a correct answer
-(`code=9001`), so expect more than one round. **It is not a guaranteed
-pass:** a second fresh profile got `9001` on every submission, including
-correct ones. That is a risk-score rejection nothing on the page can fix;
-switch to another profile. Selenium and Puppeteer use
-the same module. Puppeteer has scraped live over CDP, but has not hit
-the challenge yet. Selenium cannot use the Browser API (chromedriver takes
-no credentials). On a local headful Chrome it reached a third widget
-("click the icons in sequence"), which is now solved via
-`CoordinatesTask`, but SHEIN rejected even correct answers from that
-browser. With `--dump-html`, each
-round's screenshots are saved under `<out>_challenge/`.
-
-**Live update 2026-09-29:** Playwright completed a real search through a
-US Browser API profile after the user manually passed SHEIN's "I am human"
-step in that profile. The CLI returned `status=complete`, exit `0`, 10
-distinct products, and prices on all 10. Playwright now uses the CDP
-profile's persistent default context, retaining its verified cookies.
-This confirms one listing batch, not uninterrupted cold-profile access or
-pagination beyond the first batch. A fresh unverified profile still
-receives `/risk/challenge?captcha_type=909`.
-
-**Written 2026-09-21 from a real, live browser capture** (a real Chromium
-browser navigating real shein.com pages, not a static fetch or a guess).
-Unlike most of this family's first builds, nearly everything below is
-CONFIRMED, not assumed:
-
-- **Search URL, confirmed real**: `https://us.shein.com/pdsearch/{query}/`.
-  No tracking query params are required — a plain URL of this shape loads
-  the same results a real click-through does.
-- **Category URL, confirmed real** (read off a real product page's own
-  `BreadcrumbList` JSON-LD): `https://us.shein.com/{Category Name}-c-
-  {numeric-id}.html`, e.g. `Women Jeans-c-1934.html`.
-- **Product URL, confirmed real**: `https://us.shein.com/{slug}-p-
-  {goods_id}.html`, e.g. `https://us.shein.com/dsbayvkj-p-33704388.html` —
-  `goods_id` is the part that matters; `{slug}` looks decorative.
-- **A search-results page carries NO `ItemList`/`Product` JSON-LD** — only
-  a plain `BreadcrumbList` (confirmed live). The real, primary data source
-  is a JS global embedded directly in the page's own server-rendered HTML:
-  `window.gbRawData.results.bffProductsInfo.products` — a rich, confirmed-
-  real array (id, name, brand, category, three price tiers, discount
-  percent, rating, review count, stock/clearance/quickship flags, and more)
-  with no extra request needed for the first batch. `shein_parser.py`'s
-  `extract_gb_raw_data()` is this repo's primary extraction path.
-- **A product-DETAIL page carries a real, clean schema.org `ProductGroup`
-  JSON-LD block** (`name`/`brand`/`productGroupID`/`image[]`, plus
-  `hasVariant`: one `Product` node per size with its own `offers.price`) —
-  confirmed live against the example URL above. A `--url` pointed directly
-  at a product page auto-routes to this parser instead of the listing one
-  (see "Two URL modes" below).
-- **A real bot-mitigation incident was hit and captured, twice confirmed in
-  one session**: a cold browser context's first request to `/pdsearch/
-  jeans/` was redirected to shein.com's own in-house risk gateway
-  (`/risk/challenge?captcha_type=909&redirection=...&risk-id=...`), not a
-  third-party vendor domain. **It was NOT reproducible on the very next
-  request in the same session** — a second, different request rendered
-  cleanly with no challenge — which reads as a per-context/fingerprint risk
-  score, not a blanket block. `shein_parser.BOT_CHALLENGE_MARKERS` is the
-  ONLY detection path for this incident (the generic Cloudflare/reCAPTCHA/
-  hCaptcha/PerimeterX/DataDome marker list does not catch it — see "Known
-  limitations").
-- **Still unconfirmed**: whether scrolling a search page past its first
-  server-rendered batch (~20 products) grows `window.gbRawData` in place,
-  triggers a separate request this parser would need to intercept, or needs
-  a different trigger entirely. `--sort`'s real query-parameter shape is
-  also unconfirmed and is recorded on the run without being wired into the
-  URL yet. Neither has had a live engine run against it — see `TESTING.md`.
-- **The architecture — exit codes, the output contract, dedupe, credential
-  redaction, CLI validation, all three engines importing cleanly, and the
-  shared crash-safety wrapper around parsing (CLAUDE.md §6/§10)** — is real
-  and tested, same as every other family member. `smoke_test.py` includes a
-  fixture built from the real captured incident above
-  (`tests/fixtures/shein_risk_challenge_real.html`), alongside synthetic
-  fixtures for the confirmed-real `gbRawData`/JSON-LD shapes — see
-  `smoke_test.py`'s own module docstring for which is which.
-
-## Local-first
-
-Like the rest of the family, this does **not** require 2Captcha's paid
-Scraping Browser API to run. The default is an ordinary local headless
-Chromium, no proxy, no key, no account. `--proxy` / `--cdp-endpoint` /
-`--fingerprint` are opt-in power options for volume, a specific exit
-country, or a consistent device identity — useful here in particular given
-the confirmed, context-sensitive risk-scoring behavior above, but never
-applied automatically.
-
-## Install
-
-Pick one engine (installing more than one into the same environment is not
-supported — see "Engines" below):
+## Quick start
 
 ```bash
-pip install -r requirements-playwright.txt && playwright install chromium   # primary
-pip install -r requirements-selenium.txt                                    # needs a matching chromedriver
-pip install -r requirements-puppeteer.txt                                   # pyppeteer — see its own warning below
+git clone https://github.com/2scraper/shein-scraper.git
+cd shein-scraper
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-playwright.txt
+playwright install chromium
+cp .env.example .env        # add your keys here, never on the command line
+
+python3 playwright_scraper.py --query "summer dress" --max-results 20
 ```
 
-Copy `.env.example` to `.env` — leave it blank for a normal first run (see
-"Local-first" above) and fill in what you use later. `python3 env_config.py`
-shows what was picked up without ever printing a secret.
+Results land in `shein_results.json`, with `shein_results.json.meta.json`
+beside it.
 
-## Usage
+**Recommended setup for regular use:** a 2Captcha Scraping Browser API
+profile in `SHEIN_CDP_ENDPOINT` and a key in `TWOCAPTCHA_KEY`. SHEIN
+challenges or rate-limits plain local browsers quickly; a Scraping
+Browser profile that has passed the challenge once keeps its cookies and
+usually scrapes without further challenges.
+
+## Examples
 
 ```bash
-# a product search
-python3 playwright_scraper.py --query "summer dress" --format json --out shein_results.json
+# a search
+python3 playwright_scraper.py --query "linen pants" --max-results 60
 
-# a category path copied from shein.com's own navigation
-python3 playwright_scraper.py --category "Women Jeans-c-1934.html"
+# a category, as it appears in shein.com's own URLs
+python3 playwright_scraper.py --category "Women Jeans-c-1934.html" --format csv --out jeans.csv
 
-# a single product page (auto-routes to the JSON-LD product parser)
+# a single product page (read from its JSON-LD)
 python3 playwright_scraper.py --url "https://us.shein.com/dsbayvkj-p-33704388.html"
 
-# a full search/category URL directly (escape hatch — bypasses --query/--category)
-python3 playwright_scraper.py --url "https://us.shein.com/pdsearch/jeans/"
+# through the Scraping Browser API (endpoint taken from SHEIN_CDP_ENDPOINT in .env)
+python3 playwright_scraper.py --query "summer dress" --max-results 20
 
-# with 2Captcha's Scraping Browser API (opt-in — see "Local-first" above)
-python3 playwright_scraper.py --query "summer dress" --cdp-endpoint "$SHEIN_CDP_ENDPOINT"
+# the same with the other engines
+python3 puppeteer_scraper.py --query "summer dress"
+python3 selenium_scraper.py  --query "summer dress"      # local browser only, see "Engines"
+
+# compare two runs of the same search
+python3 diff_runs.py monday.json tuesday.json
 ```
 
-`selenium_scraper.py` and `puppeteer_scraper.py` accept the identical flag
-set and produce the identical output contract — see "Engines" for the two
-places they genuinely can't behave the same as Playwright.
+## Sample output
 
-### Two URL modes
+A real row from a run on 2026-09-30 (`sample_output.json` has three):
 
-A single `--url` flag transparently supports two different real page types,
-each parsed a different confirmed-real way:
-
-- A search or category listing URL (`/pdsearch/{query}/` or
-  `/{Category}-c-{id}.html`) → the `window.gbRawData` listing path, same as
-  `--query`/`--category`.
-- A single product-detail URL (`/{slug}-p-{goods_id}.html`) → the
-  schema.org `ProductGroup` JSON-LD path, returning that one product.
-
-`_resolve_start_url()` in each engine makes this call from the URL shape
-alone (`-p-` plus `.html` and no `pdsearch` segment); a `smoke_test.py`
-check asserts all three engines route the same URL the same way. A `--url`
-matching a robots.txt-disallowed path (`/user/`, `/cart/`, `/geetest/`,
-`/atomic/`, `/abt/userinfo`, and a few narrower exact paths) is refused
-outright, never silently requested.
-
-### Flags
-
-`--url --query --category --sort --max-results --max-scrolls --stall-rounds
---scroll-delay --format --out --retries --retry-delay --delay-jitter
---rate-limit-cooldown --proxy --proxy-file
---proxy-shuffle --proxy-block-retries --twocaptcha-key --captcha-api
---solve-captcha --min-score --cdp-endpoint --fingerprint --fp-tags
---fp-country --scraper-api --scraper-api-timeout --scraper-api-url
---scraper-api-cdp --scraper-api-country --scraper-api-account-id
---scraper-api-profile-id
---allow-empty --dump-html --headless/--headful`
-
-Identical across all three engines — a `smoke_test.py` check asserts the
-three parsers' flag sets never drift apart. `--fingerprint`/`--fp-tags`/
-`--fp-country` apply to all three engines: each sets whatever user agent
-the 2Captcha Fingerprint API returns via its own driver's real primitive
-(Playwright's `new_context(user_agent=...)`, pyppeteer's
-`page.setUserAgent()`, Chrome's own `--user-agent=` switch under Selenium)
-— see "What this repo deliberately does NOT apply from a fingerprint"
-below. `--captcha-api` overrides the 2Captcha REST base URL (testing only).
-`--min-score` is 2Captcha's own `minScore` field on a `RecaptchaV3Task`
-request (0.3 default, matching the rest of the family). `--sort` is
-accepted and recorded on the run only — see "Read this before trusting a
-run" above for why it isn't wired into the URL yet. **Added 2026-09-29:
-`--delay-jitter`** (default `0.3`, all three engines) multiplies every
-`--scroll-delay`/`--retry-delay`/`--rate-limit-cooldown` wait by a random
-factor in `[1-jitter, 1+jitter]`, so a run's own request timing isn't
-perfectly periodic — set it to `0` for the old exact-delay behavior (e.g.
-reproducible tests).
-
-**`--scraper-api`** (added 2026-09-22) is the odd one out: every other flag
-above still launches a local or `--cdp-endpoint` browser this process
-drives itself; `--scraper-api` instead sends ONE browserless HTTP call to
-2Captcha's Scraper API (`scraper.2captcha.com`, a separate product from
-the Scraping Browser API `--cdp-endpoint` talks to — see
-`scraper_api_client.py`'s module docstring) and 2Captcha's own
-infrastructure fetches and renders the page for us. `--proxy`/
-`--cdp-endpoint`/`--fingerprint`/`--max-scrolls`/`--stall-rounds`/
-`--scroll-delay` are all ignored in this mode (logged as a warning, not
-silently dropped) — a single static fetch has no scroll loop and brings
-its own exit IP/device. Live-tested against real shein.com on all three
-engines, 2026-09-22: real product-page HTML does come back, and this
-repo's own `/risk/challenge` interstitial shows up here too sometimes
-(`--block-retries` helps the same way it does on the browser path), but
-there is no documented way to pin which country/locale 2Captcha's own
-infrastructure exits through — a clean, unblocked response landed on
-shein.com's Netherlands storefront in every live test today, which this
-repo's US/English-tuned parser correctly reports as zero products rather
-than miscounting. By itself this mode also has no captcha solving — a
-solved token has no live page/DOM here to be injected into.
-
-**`--scraper-api-cdp`** routes the Scraper API request through a 2Captcha
-Browser API session. The client now asks `POST /browser/connection` for a
-ready-made URL; a regular API key is *not* a browser login/password. Select
-an existing Browser API account with `--scraper-api-account-id` when needed.
-`--scraper-api-country us` requires that account to already be configured
-for US; it does not change the account's proxy or guarantee the exit country
-of a custom proxy. `--scraper-api-profile-id` selects/reuses a profile —
-**added 2026-09-29:** omitting it now logs a warning, since every run
-otherwise gets a fresh profile from 2Captcha's default pool instead of a
-warmed, reused identity (the same principle this repo's own
-`--block-retries`/context-reuse work above is built on). Without a
-matching account, setup fails before a billed scrape request.
-This path remains unverified for a successful SHEIN extraction.
-
-On 2026-09-28 a real run of the old hand-built CDP URL failed with
-`401 Wrong user name format`. A direct Scraper API request using an
-existing saved CDP URL failed with `500 proxy_error`. The current code
-does not claim either route bypasses SHEIN's risk gateway.
-
-When SHEIN redirects to `/risk/action/limit`, the scraper ends that run
-without `--block-retries` or further scrolling. SHEIN's public limit page
-asks visitors to try again after five minutes. By default this stops
-repeated paid requests; it does not automatically wait and resume the
-run. **Added 2026-09-29:** `--rate-limit-cooldown 300` (all three
-engines, default `0` = off) makes the run actually do what that message
-says — wait the given number of seconds (jittered, see
-`--delay-jitter` below) and retry ONCE on the same session before giving
-up for real, instead of just printing the suggestion. Off by default
-because it can add minutes to a single invocation; not yet exercised
-against a real SHEIN rate-limit live with a real ~5 minute wait — see
-CHANGELOG.md.
-
-**If the Scraping Browser session itself fails** (added 2026-09-28) — a
-Scraper API HTTP-level error, not a normal blocked-with-zero-products
-page — the run automatically falls back to `--scraper-api`'s plain
-default pool ONCE, logged loudly, instead of giving up outright with
-`remote_api_error`. This is separate from `--block-retries` (which is for
-a genuinely blocked page, where a pool with *less* solving capability
-wouldn't help) and is never attempted a second time in the same run —
-`cdp_url` is dropped for good the moment it fires, trading away country/
-profile pinning and 2Captcha's own auto-solve for whatever's left of that
-run. Plain `--scraper-api` (no `--scraper-api-cdp`) is unaffected: no
-fallback logic runs at all.
-
-### Family flags that don't apply here — and why
-
-- **`--pages`**: a shein.com listing is treated as a single scroll-based
-  results page here (see "Pagination" below), the same structural reason
-  lidl-scraper omits it — `--max-scrolls`/`--stall-rounds` are this repo's
-  actual equivalent.
-- **`--concurrency` / `--proxy-rotate`**: same reasoning as the rest of the
-  family — a single scroll-based page has no independently-addressable
-  units to parallelize or rotate an exit between. `proxy_pool.ProxyPool.
-  worker_view()` is still ported verbatim per the family's "copy the core,
-  verbatim" rule (§7) and stays tested, for if a future feature (e.g.
-  running several search terms as a batch) introduces an actual
-  parallelizable unit.
-- **`--zip` / `--store-id`**: shein.com is a single global marketplace
-  storefront (per-country pricing via the `us.shein.com` subdomain, not a
-  physical-store network like lidl-scraper's Lidl US) — there is no
-  per-store selection to record.
-
-### What this repo deliberately does NOT apply from a fingerprint
-
-`fingerprint_client.py` only ever extracts and applies the user agent from
-a 2Captcha Fingerprint API profile — never a locale or timezone, for the
-same reason the rest of the family states: this session could not get a
-confirmed field name for either from 2Captcha's own public reference, and a
-previous family member shipped a *fabricated* locale that went unnoticed
-for months. Omitting a signal honestly beats guessing it.
-
-Credentials belong in `.env` / `SHEIN_PROXY` / `TWOCAPTCHA_KEY` — never as
-literal `--proxy`/`--twocaptcha-key` text on a shared or logged command
-line if you can avoid it.
-
-## Output contract
-
-`Product` (`output_writer.py`) — family-common columns first, fashion-
-listing columns after:
-
-```
-sku, source, category, title, brand, price, currency, price_source, product_url,
-image_url, scraped_at,
-original_price, discount_pct, rating, review_count, store_code, in_stock,
-is_clearance, quickship
+```json
+{
+  "sku": "458057728",
+  "source": "shein.com",
+  "category": "Women Mini Dresses",
+  "title": "Aloruh Women's Solid Color Sleeveless Mini Dress, Suitable For Beach Vacation,Dresses For Women Summer",
+  "brand": "Aloruh",
+  "price": 13.03,
+  "currency": "USD",
+  "price_source": "embedded_json",
+  "product_url": "https://us.shein.com/Aloruh-Women-s-Solid-Color-Sleeveless-Mini-Dress-Suitable-For-Beach-Vacation-Dresses-For-Women-Summer-p-458057728.html",
+  "image_url": "https://img.ltwebstatic.com/v4/j/pi/2026/05/02/f8/17776852344d34295349aad8f43f4fbd32e5a672d8_thumbnail_405x552.jpg",
+  "scraped_at": "2026-09-30T12:56:49Z",
+  "original_price": 20.89,
+  "discount_pct": 38.0,
+  "rating": 4.62,
+  "review_count": 1001,
+  "store_code": "4534970445",
+  "in_stock": true,
+  "is_clearance": false,
+  "quickship": false
+}
 ```
 
-`sku` is `goods_id` — shein.com's own numeric product identifier, confirmed
-real and stable across a product's color/size variants — falling back to a
-deterministic fingerprint of `product_url` only when it can't be extracted.
-Note this is a DIFFERENT id scheme than `goods_sn` (a search card's own
-"SKU" string) or a product-detail page's per-variant JSON-LD `sku` (one per
-size); `goods_id` was chosen because it's the one identifier confirmed
-stable across both a search-result card and that same product's detail-page
-URL. `brand` is genuinely variable (SHEIN is a marketplace of many in-house
-and third-party labels, unlike lidl-scraper's single private-label
-storefront). `price` is the actual charged price (`salePrice.amount`);
-`original_price`/`discount_pct` carry the "was" side, left `null` when a
-card has no real discount rather than duplicating the current price.
-`price_source` is `embedded_json` (from `window.gbRawData`) or `dom`
-(fallback), mirroring which extraction path actually produced the row —
-never a defaulted guess. `sample_output.json`/`sample_output.csv` are
-clearly fictional rows (see the file headers) using the confirmed-real
-field shapes above, not a live capture — no full engine run against the
-live site has been made yet (see `TESTING.md`).
+| Field | Meaning |
+|---|---|
+| `sku` | SHEIN's `goods_id`, the same across a product's colours and sizes |
+| `category` | SHEIN's category name for the product |
+| `price` / `currency` | what the customer pays now |
+| `original_price` / `discount_pct` | the "was" price and the discount; `null` when there is no discount |
+| `price_source` | where the price came from: `embedded_json` (listing data), `json_ld` (product page) or `json_ld_min_variant` (lowest variant price of a product page) |
+| `rating` / `review_count` | average rating and number of reviews; `rating` is `null` when there are no reviews |
+| `store_code` | the seller's store id |
+| `in_stock`, `is_clearance`, `quickship` | SHEIN's own flags |
 
-**Exit codes**: `0` complete · `1` crash · `2` bad usage · `3` blocked ·
-`4` zero products · `5` remote API error · `6` partial. `3`, `4` and `5`
-mean NO rows: nothing is written, not even a sidecar, so a previous good
-run is never overwritten (`--allow-empty` opts out of that). **Any run
-that has rows but did not finish cleanly is `6` partial**, and the
-sidecar's `stop_reason` says why: `blocked`, `remote_api_error`,
-`failed_pages` or `rejected_rows` (records of an unexpected shape the
-parser skipped; their count is in `rejected_rows`). Until 2026-09-30 such
-a run exited `3`/`5` while writing its rows, so a pipeline keyed on the
-exit code discarded good data (CLAUDE.md §25).
+## Getting past SHEIN's bot check
 
-The sidecar also records `max_results`, `capped` (the run hit that cap)
-and `output_sha256` (binding it to the file beside it).
+SHEIN sends suspicious visitors to its own risk gateway instead of the
+page. The scraper recognises both gates:
 
-**`diff_runs.py old.json new.json`** compares two `complete` runs by
-`sku`, and refuses a comparison that would lie: two different selections
-(the sidecar URLs differ — another market, query or category; override
-with `--allow-different-scope`), or a sidecar that does not describe its
-file. A currency difference is `currency_changed`, never a price change.
-When either run was capped, a SKU missing from the new one is
-`left_selection` (it fell out of the top N), not `removed`. A product
-page's price is the lowest-priced variant (`price_source:
-json_ld_min_variant`), so reordering variants never reads as a change.
+- **`/risk/challenge`**, a verification step. The scraper clicks the "I
+  am human" checkbox (free). If SHEIN escalates, it screenshots the
+  puzzle and sends it to 2Captcha: the image grid as a `GridTask`, the
+  icon sequence as a `CoordinatesTask`. It clicks the answer and repeats
+  with a fresh puzzle if SHEIN refuses it (`--risk-challenge-rounds`,
+  default 5).
+- **`/risk/action/limit`**, a rate limit. There is nothing to solve. The
+  run stops with exit 3 and `stop_reason: rate_limited`, or, with
+  `--rate-limit-cooldown 300`, waits and retries once.
 
-## Pagination
+What to expect, measured on 2026-09-30 with fresh US Scraping Browser
+profiles: **3 of 5 profiles passed the challenge**, each on its third
+round. SHEIN usually refuses the first correct answer or two. The other
+two profiles were refused on every answer, including correct ones: SHEIN
+had flagged the profile itself, and only a different profile helps. The
+run then exits 3 rather than returning bad data.
 
-Confirmed real: a search page's first server-rendered `window.gbRawData`
-batch holds 20 products, out of a total that can run into the tens of
-thousands (`results.sum`). Each engine scroll-loops in viewport-sized
-steps, tracks `previous_product_count` for stall detection (per
-`--stall-rounds`), and dedupes by `sku`. **Whether scrolling actually grows
-`gbRawData` with genuinely new products past the first batch is
-unconfirmed** (see "Read this before trusting a run") — every engine's
-scroll loop is written defensively around this uncertainty rather than
-assuming either answer, and the run degrades to `partial` (exit 6) if
-fewer than `min(total_available, --max-results)` rows were captured, never
-a plausible-looking `complete` result.
+Paid solves are capped per run with `--max-solves` (default 8, `0` never
+pays). The count actually spent is recorded as `solves_spent` in the
+`.meta.json`.
+
+## Run results and exit codes
+
+Every run writes `<out>` and `<out>.meta.json` (status, `stop_reason`,
+product count, `total_results` reported by SHEIN, whether `--max-results`
+capped it, solves spent, and a hash of the output file). A run that
+collects nothing writes neither, so it never replaces your previous good
+file.
+
+| Exit | Meaning |
+|---|---|
+| `0` | complete |
+| `6` | partial: rows were written, but the run did not finish cleanly — `stop_reason` says why (`blocked`, `rate_limited`, `remote_api_error`, `failed_pages`, `rejected_rows`) |
+| `3` | blocked or rate-limited, no rows |
+| `4` | the page loaded but had no products |
+| `5` | a remote service failed (Scraping Browser, Scraper API), no rows |
+| `2` | bad usage |
+| `1` | crash (a bug; please report it) |
+
+## Comparing runs
+
+`diff_runs.py old.json new.json` compares two complete runs by `sku`:
+products added, removed, price changed. It refuses comparisons that would
+mislead: two runs of different searches, markets or `--sort`, or a
+`.meta.json` that does not match its file. A currency difference is
+reported as `currency_changed`, never as a price change. When a run was
+capped by `--max-results`, a product missing from the new run is listed as
+`left_selection` (it dropped out of the top N), not as removed.
+`--fail-on-change` exits 1 on a real price change, for use in a pipeline.
+
+## Options
+
+Same flags for all three engines. Credentials go in `.env`
+(`TWOCAPTCHA_KEY`, `SHEIN_PROXY`, `SHEIN_CDP_ENDPOINT`), never on the
+command line.
+
+| Option | Default | |
+|---|---|---|
+| `--query` / `--category` / `--url` | | what to scrape (`--url` wins; it can be a search, category or product URL) |
+| `--max-results` | 30 | products to collect |
+| `--format` / `--out` | json / `shein_results.<format>` | output format and path |
+| `--max-scrolls` / `--stall-rounds` / `--scroll-delay` | 20 / 4 / 1.5s | how far to scroll a listing, and when to stop if nothing new appears |
+| `--cdp-endpoint` | `SHEIN_CDP_ENDPOINT` | connect to a Scraping Browser API profile instead of launching a browser |
+| `--proxy` / `--proxy-file` / `--proxy-shuffle` | `SHEIN_PROXY` | one proxy or a rotating pool (`http://login:pass@host:port` or `host:port:login:pass`) |
+| `--solve-captcha` | when-blocked | `off` / `when-blocked` / `always` |
+| `--risk-challenge-rounds` | 5 | puzzle rounds per SHEIN challenge (0 = don't solve) |
+| `--max-solves` | 8 | paid 2Captcha solves per run (0 = never pay) |
+| `--block-retries` | 2 | retries on the same session after a block with no products |
+| `--rate-limit-cooldown` | 0 | seconds to wait and retry once after a rate limit (e.g. 300) |
+| `--retries` / `--retry-delay` / `--delay-jitter` | 2 / 3s / 0.3 | navigation retries, and randomised waits |
+| `--fingerprint` / `--fp-tags` / `--fp-country` | off | apply a 2Captcha Fingerprint API user agent (local browsers only) |
+| `--scraper-api` | off | fetch through 2Captcha's Scraper API instead of a browser (no scrolling: one page per run) |
+| `--scraper-api-cdp` | off | route `--scraper-api` through a Scraping Browser profile (`--scraper-api-country`, `--scraper-api-profile-id`, `--scraper-api-account-id`) |
+| `--dump-html` | off | save the page HTML (and puzzle screenshots) next to the output, for debugging |
+| `--allow-empty` | off | write an output file even when nothing was found |
+| `--headless` / `--headful` | headless | show the browser window |
+| `--sort` | relevance | recorded in the results only; not yet sent to SHEIN |
+
+Run any engine with `--help` for the full list.
 
 ## Engines
 
-Playwright is primary; Selenium and pyppeteer exist for parity. **All
-three run ONE fetch loop, `page_flow.py`** (CLAUDE.md §26): navigation
-with dead-proxy detection, SHEIN's gateways, the challenge pass, the
-scroll-merge, `--block-retries` and the cooldown retry, the Scraper API
-mode, and the single `finish_run` call. Each engine only provides a page
-session with named operations (`goto`, `url`, `content`, `gb_raw_data`,
-`scroll`, `pass_risk_challenge`, `solve_captcha`, `close`) in its own
-driver's dialect; a check derives that operation set from `page_flow`'s
-AST and requires every engine to provide it. Real, stated limits (identical to the rest of the family's,
-since these are properties of the drivers, not the site):
+- **Playwright** (`playwright_scraper.py`) is the recommended engine,
+  with local Chromium or the Scraping Browser API.
+- **Puppeteer** (`puppeteer_scraper.py`, via pyppeteer) supports the same
+  two modes. pyppeteer itself is no longer maintained.
+- **Selenium** (`selenium_scraper.py`) runs a local Chrome only.
+  chromedriver cannot authenticate a Scraping Browser endpoint, and its
+  `--proxy-server` cannot use a proxy password (the credentials are
+  stripped, with a warning).
 
-- **Selenium cannot use an authenticated remote CDP endpoint.**
-  chromedriver's `debuggerAddress` takes a bare `host:port`; the Scraping
-  Browser API's `ws://login:pass@host:port` shape needs an authenticated
-  WebSocket upgrade, which only Playwright's `connect_over_cdp` and
-  pyppeteer's `connect` support. `selenium_scraper.py` refuses a
-  credentialed `--cdp-endpoint` outright (exit 2).
-- **Selenium's `--proxy-server` cannot authenticate at all.** A `--proxy`
-  with credentials has them stripped before reaching Chrome, with a loud
-  warning — never a silent no-op.
-- **pyppeteer is effectively unmaintained** (its own README points at
-  Playwright) — shipped for parity, not as a recommendation.
-- Install **exactly one** engine per environment — Playwright and pyppeteer
-  declare mutually unsatisfiable `pyee` pins, and pyppeteer collides with
-  Selenium's `urllib3` pin. Use a venv per engine, same as
-  `.github/workflows/tests.yml`'s `engine-smoke` job.
+Install one engine per virtualenv (`requirements-playwright.txt`,
+`requirements-selenium.txt`, `requirements-puppeteer.txt`). Their
+dependencies conflict with each other.
+
+All three engines share one scraping loop (`page_flow.py`), so they agree
+on results, exit codes and when money is spent. Docker:
+`docker build -t shein-scraper .` gives an image with Playwright and
+Chromium.
 
 ## Known limitations
 
-- **`/risk/challenge` is solved by `shein_challenge.py`, not by
-  `captcha_solver.py`** (2026-09-30). It is SHEIN's own widget, so the
-  generic GeeTest/reCAPTCHA paths below never fire for it. The grid's
-  selectors (`nine-captcha-custom`, `.nine-content-img`,
-  `.header-content-img`, `.nine-success`/`.nine-fail`) are confirmed from
-  one live capture. If SHEIN renames them, the run logs "unrecognised
-  challenge stage" and falls back to the normal blocked outcome (exit 3).
-- **The `/risk/challenge` redirect is the only detection path for its own
-  incident** — `shein_parser.BOT_CHALLENGE_MARKERS` (`/risk/challenge`,
-  `captcha_type=909`), not `captcha_solver.GENERIC_BOT_CHALLENGE_MARKERS`.
-  The generic list has no "geetest" entry, and the captured block page's
-  own content is a normal-looking SHEIN shell, not vendor-identifiable
-  widget markup — so unlike every other family member's incident, these
-  extra markers are load-bearing, not corroboration.
-- **GeeTest is a suspect, not the confirmed answer — reCAPTCHA v2 is ALSO
-  real and live on this site, and there's a third, undetermined layer too**
-  (re-investigated 2026-09-21, later the same day, prompted directly by
-  Roman asking whether GeeTest is really it and whether other vendors
-  might be in play — see `shein_parser.py`'s module docstring for the
-  full write-up). A fresh live session found: (1) Google reCAPTCHA v2 is
-  genuinely, concretely confirmed on shein.com — real script tags
-  (`google.com/recaptcha/api.js`), a live `window.grecaptcha` v2 object,
-  and a real sitekey (`window.gbCommonInfo.GOOGLE_VERIFY_SITEKEY`) — much
-  stronger evidence than GeeTest's three circumstantial signals, though
-  its `GOOGLE_VERIFY` naming points more at account/login anti-abuse than
-  the generic search-page wall this repo scrapes. This exposed a real,
-  now-fixed detection gap: the sitekey lives only in a JS config
-  variable, never in the static `<div class="g-recaptcha"
-  data-sitekey="...">` markup `identify_widget()` used to require —
-  `captcha_solver.py` now also matches reCAPTCHA's own distinctive
-  sitekey shape anywhere on the page, gated on the v2 loader being
-  present (see `_RECAPTCHA_SITEKEY_ANYWHERE_RE`). (2) A third,
-  previously-undocumented risk/fingerprinting layer, apparently
-  proprietary and branded "Armor" (`armor.ltwebstatic.com`,
-  `sc.ltwebstatic.com/.../devices/fpv2.7.js` calling `/devices/v3/
-  profile/web` and `/risk/verify/identity/validation/publish/sign/rule`),
-  runs on every page — obfuscated, no plaintext vendor string found in
-  it, so genuinely UNDETERMINED whether it's in-house or a white-labeled
-  third party. The likely shape: this layer silently scores every
-  request and decides whether to show `/risk/challenge` at all, with
-  whichever widget (if any) appears there as a step-up behind it — which
-  still hasn't been captured live, for any vendor, despite five more
-  rapid category searches in this session that didn't reproduce the
-  redirect. Net: GeeTest is still the best-supported specific guess for
-  `/risk/challenge` itself, but it's demonstrably not the only
-  captcha-shaped thing on this site, and this repo's coverage of the one
-  OTHER concretely-confirmed vendor is now solid rather than blind to it.
-- **`captcha_solver.py` can now build a 2Captcha task for GeeTest** (added
-  2026-09-21 — `CaptchaType.GEETEST_V3`/`GEETEST_V4`), since shein.com's
-  gateway is suspected (not confirmed — see above) to use it. One real gap
-  remains: the widget-detection patterns in `identify_widget()` are
-  UNCONFIRMED best-effort from GeeTest's own public docs, not a real
-  shein.com capture. A 2026-09-29 Browser API Live screenshot did reach
-  SHEIN's `/risk/challenge?captcha_type=909` and showed an "I am human"
-  checkbox. The user completed it manually; this does not identify the
-  widget vendor or verify an automated solver for it.
-- **Captcha token injection on a locally-launched browser is now
-  implemented for every widget type this repo recognizes** (added
-  2026-09-21, later the same day — `captcha_solver.build_injection_script()`
-  plus all three engines' `_maybe_solve_captcha` calling it from their
-  "solved" branch), closing a real gap the GeeTest work above had
-  surfaced without closing: previously every engine got a solved
-  token/solution back from 2Captcha but only logged it, never wrote it
-  into the page. Read the caveat carefully before trusting this against a
-  real run: each widget's injection uses that widget's own STANDARD,
-  publicly-documented client-integration convention (a hidden
-  `g-recaptcha-response` textarea for reCAPTCHA v2, a
-  `cf-turnstile-response` field for Turnstile, named `geetest_challenge`/
-  `geetest_validate`/`geetest_seccode` fields for GeeTest v3, and so on —
-  see `captcha_solver.build_injection_script`'s own docstring for the
-  full list) — **not** anything confirmed against a real shein.com widget
-  capture, which has never happened for ANY type on this site. reCAPTCHA
-  v3 has no such convention at all (it's invisible; the token is
-  typically consumed the instant the site's own JS resolves
-  `grecaptcha.execute()`, often straight into an XHR, never read back off
-  a DOM element) so `build_injection_script()` deliberately returns
-  `None` for it rather than guess at site-specific consumption code,
-  which this shared module's own no-site-knowledge charter says doesn't
-  belong here — a caller still gets the raw token back in that case, for
-  a caller with actual site-specific knowledge to use. A failed injection
-  degrades to a logged warning, never a crash.
-  Over `--cdp-endpoint` (the Scraping Browser API), none of this local
-  injection code runs at all — 2Captcha's own `Captcha.setAutoSolve` CDP
-  domain solves AND injects entirely inside their infrastructure — but
-  that extension's own confirmed widget coverage (live, 2026-09-14:
-  Turnstile, Amazon WAF, Yandex SmartCaptcha, Lemin) did not include
-  GeeTest in the one capture that confirmed it, so whether a real GeeTest
-  challenge on shein.com gets auto-solved over CDP is itself unconfirmed,
-  not just the local path.
-- **Fixed 2026-09-22: `scrape_product_page()` (the `--url` path pointed at
-  a single product page, in every engine) now attempts captcha solving.**
-  Previously only `scrape_search()`'s scroll loop called
-  `_maybe_solve_captcha` — a `/risk/challenge` redirect hit while fetching
-  a single product page was detected as `blocked` (the URL check still
-  ran) but no 2Captcha solve was ever attempted for it. Fixing this
-  surfaced a second, more important bug that would have shipped alongside
-  a naive fix: `_maybe_solve_captcha`'s "are products already present, so
-  don't bother solving" check defaults to `sp.count_result_cards`, which
-  is SEARCH-page-shaped and returns `0` on literally every product page —
-  wiring that default straight into `scrape_product_page()` would have
-  meant every normal product-page scrape either logged a false
-  "unidentified widget" warning (thanks to the confirmed-real, site-wide
-  reCAPTCHA v2 loader — see the sitekey finding above) or, worse, actually
-  spent a real 2Captcha solve on a page that was never blocked at all,
-  whenever a real sitekey also happened to be on the page. Fixed by
-  passing a product-page-shaped check instead (did
-  `sp.parse_product_page()` already find real data?), and — since there's
-  no scroll/round loop here to pick an injected solution up naturally the
-  way `scrape_search()`'s next round does — a single re-fetch of the page
-  after a successful solve, so the attempt can actually change the
-  outcome instead of being purely theatrical. `smoke_test.py` gained both
-  a structural check (every engine's `scrape_product_page()` calls
-  `_maybe_solve_captcha` AND passes its own `count_product_links`) and a
-  behavioral one (proves the old default would have skipped solving on a
-  genuinely blocked product page, and proves the fix correctly skips
-  solving on a genuinely fine one).
-- **`playwright_scraper.py` HAS now been run live against the real site**
-  (Roman's own machine, 2026-09-21, not blocked by this repo's own
-  execution environments the way earlier attempts were — see
-  `TESTING.md`) — and it immediately found a real, new failure shape:
-  `--query "summer dress"` returned exit `4` ("empty") on a
-  freshly-launched, cookie-less browser context, even though the exact
-  same URL returned a completely normal 20-product page seconds later
-  through a browser session that already had shein.com cookies. Not
-  `/risk/challenge`, not a `>=400` status, not a parsing bug —
-  `--dump-html`'s capture had an empty `<title>` and zero
-  `bffProductsInfo`/`pdsearch` markers anywhere in ~1.58MB, consistent
-  with (not proven to be) shein.com serving a different page entirely for
-  a request from a bare cookie jar. See `shein_parser.py`'s module
-  docstring, "First real engine run" section, for the full write-up. This
-  correctly does NOT get reported as `blocked` (there's no bot-mitigation
-  marker at all — calling it that would misrepresent what happened), but
-  it also wasn't diagnosable from the log alone before this: every
-  engine's "zero products, not blocked" warning now logs
-  `shein_parser.diagnose_unexpected_page()`'s output (the page's real
-  `<title>` and whether search-page markers are present) plus the final
-  URL, and — a real parity gap this exposed — Selenium and Puppeteer had
-  NO such warning at all before (only Playwright did); all three do now.
-  **Resolved minutes later**: a re-run with the new diagnostic logging
-  gave the actual final URL — `https://us.shein.com/risk/action/limit?
-  risk-id=...` — a THIRD real incident under SHEIN's own `/risk/` gateway
-  family, and a much simpler explanation than the cookie-jar theory
-  above: the path name and the complete absence of any captcha-shaped
-  content on it point at a plain RATE LIMIT, most plausibly tripped by
-  this repo's own recent testing (several rapid CLI runs, plus an
-  earlier research session's many rapid browser-tool navigations) rather
-  than anything cookie-related. `BOT_CHALLENGE_MARKERS` and a new
-  `RISK_GATEWAY_URL_MARKERS` tuple now cover `/risk/action/limit`
-  alongside `/risk/challenge` in every engine's URL check, so this
-  reports as `blocked` (exit 3) going forward instead of silently
-  `empty` (exit 4). `diagnose_unexpected_page()` stays in place — it's
-  what surfaced the URL that made this diagnosable, and it's still
-  useful for whatever next "zero products, not blocked" case isn't
-  covered by a known marker yet. See `shein_parser.py`'s module
-  docstring for the full write-up.
-- **A fourth real block shape, confirmed 2026-09-22**: a plain HTTP `403`
-  whose body is SHEIN's own genuine "outOfService" page (real
-  `img.ltwebstatic.com` asset, `<title>outOfService</title>`, "System
-  Updating" copy, a per-request `EVENT ID:`), captured live via `--dump-html`
-  on a `--cdp-endpoint` run. Not a captcha, not `/risk/challenge`, not
-  `/risk/action/limit` — but already handled correctly with no code change:
-  the existing `status >= 400` check reports it as `blocked` (exit 3), same
-  as the other three shapes. Treat `/risk/challenge`, `/risk/action/limit`,
-  this "outOfService" 403, and any other `>=400` as one family of "SHEIN
-  declined to serve this request" outcomes — which one you hit on a given
-  run looks rotated/randomized, not something a fixed URL or header check
-  alone predicts. See `shein_parser.py`'s module docstring for the full
-  write-up.
-- **Correction to the GeeTest-over-CDP coverage claim above**: the same
-  `--dump-html` capture shows 2Captcha's Scraping Browser extension
-  injecting `geetest/interceptor.js` AND `geetest_v4/interceptor.js` into
-  every page (alongside the previously-confirmed Turnstile/Amazon WAF/
-  Yandex/Lemin set, plus arkoselabs/recaptcha/keycaptcha/mt_captcha/
-  captchafox). So GeeTest is at least watched-for by the extension, which
-  the 2026-09-14 capture didn't happen to show — but interceptor presence
-  is not the same as a confirmed solve; no page with a live GeeTest widget
-  has gone through this CDP session yet. Treat CDP-side GeeTest support as
-  "plausible, no longer unlisted" rather than "confirmed" or "absent."
-- **Added 2026-09-22: `--block-retries` (default `2`) — retry a blocked,
-  zero-product outcome on the SAME browser/proxy/CDP session before giving
-  up**, instead of declaring failure on the first hit. This follows a
-  measured pattern from sibling family member `etsy-scraper` (see
-  https://github.com/2scraper): against its own DataDome-protected site,
-  one profile was refused twice and cleared from the third attempt
-  onward — "retry before you rotate." It will NOT fix the `captcha_type=909`
-  incident below — that one keeps the browser on the gateway URL with no
-  path forward no matter how many times the page reloads on the same
-  session, confirmed on two separate real hits.
-- **Fixed 2026-09-22: a stale-text false positive in the captcha-detection
-  round loop.** With `TWOCAPTCHA_KEY` finally configured, a live
-  `/risk/challenge?captcha_type=909` hit gave this repo's own solve path
-  its first real chance to run, live — and the widget markup STILL wasn't
-  captured. SHEIN's redirect target is embedded as literal text in the
-  page's own SSR state (an `"originalUrl"` field — "where this session
-  came from"), which can keep matching `BOT_CHALLENGE_MARKERS` on later
-  scroll rounds even after the browser has moved to a completely
-  different, unrelated page (confirmed live: SHEIN's own homepage — zero
-  captcha widgets, zero challenge iframes, only ad-tracking pixels). This
-  produced five misleading `"detected_unidentified_widget"` warnings in
-  one real run. All three engines now corroborate a post-round-0 marker
-  match against that round's own current URL before trusting it. See
-  `shein_parser.py`'s module docstring for the full write-up.
-- **Scroll-driven pagination growth is unconfirmed** — see "Pagination"
-  above.
-- **DOM fallback selectors are unverified guesses** (`# TODO: verify live`
-  in `shein_parser.py`) — never needed against the real site so far, since
-  `window.gbRawData` was present on every page captured.
+- **us.shein.com only.** Other SHEIN country sites use different
+  locales and have not been tested.
+- **Listings beyond the first ~20 products are unverified.** The page
+  embeds its first batch of about 20 products, and every live run so far
+  asked for 20 or fewer. The scraper scrolls for more and stops when
+  nothing new appears, but whether scrolling actually loads further
+  products has not been confirmed. The run warns, and reports `partial`,
+  when it collects fewer than SHEIN says exist.
+- **`--sort` is not sent to SHEIN yet.** Its URL parameter has not been
+  confirmed.
+- **Profiles wear out.** A Scraping Browser endpoint's credentials last
+  about a day (HTTP 401 afterwards, with a clear message). After roughly
+  ten runs in a row a profile may be rate-limited for a few minutes.
+- **The bot check is not always solvable** — see above.
 
 ## Development
 
 ```bash
-python3 smoke_test.py     # or: pytest tests/test_smoke.py
+python3 smoke_test.py            # 97 offline checks, no network, no engine needed
+python3 .github/ci_checks.py     # credential scan
 ```
 
-Passes with **no** engine library installed at all (each engine guards its
-driver import behind a module-level `try/except ImportError`).
+CI runs the offline suite on Python 3.9 and 3.12, installs the built
+wheel outside the checkout, builds the Docker image and launches Chromium
+in it, and runs each engine in its own virtualenv. `TESTING.md` describes
+live testing with real credentials; `CHANGELOG.md` has the history.
 
-**Testing against the live site**: see [`TESTING.md`](TESTING.md). A first
-live Playwright run, Selenium/pyppeteer parity, scroll-pagination growth,
-and the DOM fallback path remain the highest-value live checks.
+## Licence
 
-## License
-
-MIT — see `LICENSE`.
+MIT, see `LICENSE`.

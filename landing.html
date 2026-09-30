@@ -177,15 +177,12 @@
       integration or public feed already covers your use case. This scraper is for everything outside that.
     </div>
     <div class="callout honest">
-      <strong>Read this before you rely on it:</strong> written 2026-09-21, from a real, browser-rendered
-      capture of <code>shein.com</code> — the core data path is confirmed, not guessed. Search/category pages
-      expose a rich embedded JS state (<code>window.gbRawData</code>); a single product page exposes a clean
-      schema.org <code>ProductGroup</code> block instead, and the scraper auto-detects which one it was given.
-      A real bot-mitigation redirect (<code>/risk/challenge</code>) was also captured — and did NOT reproduce
-      on the very next request in the same session, reading as a per-context risk score rather than a blanket
-      block. Still open: whether scrolling loads more real products past the first batch, and a first live run
-      of this repo's own engines against the real site. Full details in the
-      <a href="https://github.com/2scraper/shein-scraper#readme">README</a> — read it first.
+      <strong>What to expect:</strong> listings are read from the page's own embedded product data
+      (<code>window.gbRawData</code>), product pages from their schema.org JSON-LD. SHEIN's own bot check
+      (<code>/risk/challenge</code>) is solved automatically through 2Captcha — on 2026-09-30, 3 of 5 fresh
+      US Scraping Browser profiles passed it; the others were refused by SHEIN outright, and the run says so
+      (exit 3) instead of returning bad data. Listings beyond the first ~20 products are not yet verified.
+      Details in the <a href="https://github.com/2scraper/shein-scraper#readme">README</a>.
     </div>
   </section>
 
@@ -200,7 +197,7 @@
         <tr>
           <td>Playwright</td>
           <td>Python, single file</td>
-          <td>Primary engine, local-first — full Scraping Browser API support incl. captcha auto-solve</td>
+          <td>Recommended engine — local Chromium or the Scraping Browser API</td>
           <td><span class="pill buy">RECOMMENDED</span></td>
         </tr>
         <tr>
@@ -249,7 +246,7 @@
 <span class="cmt"># clone, install, configure</span><br>
 <span class="cmd">git clone https://github.com/2scraper/shein-scraper.git</span><br>
 <span class="cmd">cd shein-scraper && pip install -r requirements-playwright.txt && playwright install chromium</span><br>
-<span class="cmd">cp .env.example .env</span> <span class="cmt"># optional — not required for a local-first run</span><br><br>
+<span class="cmd">cp .env.example .env</span> <span class="cmt"># TWOCAPTCHA_KEY and SHEIN_CDP_ENDPOINT go here</span><br><br>
 <span class="cmt"># a product search</span><br>
 <span class="cmd">python3 playwright_scraper.py --query "summer dress" --format json --out shein_results.json</span><br><br>
 <span class="cmt"># or a single product page directly</span><br>

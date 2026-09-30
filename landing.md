@@ -1,6 +1,6 @@
 # SHEIN Scraper by 2scraper
 
-**Open-source fashion-marketplace product scraper for shein.com — three engines, your own infrastructure by default, 2Captcha's paid products when you actually need them.**
+**Open-source fashion-marketplace product scraper for shein.com — three engines, a local browser or 2Captcha's Scraping Browser API, SHEIN's bot check solved automatically.**
 
 Pull search, category, or single-product results — title, brand, price, discount, rating, review count, stock/clearance flags, image, product link — straight from SHEIN into JSON or CSV.
 
@@ -12,16 +12,16 @@ Pull search, category, or single-product results — title, brand, price, discou
 
 Check SHEIN's own site and app for anything a formal integration or public feed already covers your use case. This scraper exists for everything outside that: price checks, personal shopping-research tooling, and use cases a formal partnership doesn't fit.
 
-## Read this before you rely on it
+## What to expect
 
-**Written 2026-09-21**, from a real, browser-rendered capture of shein.com — unlike most first releases in this family, the core data path is confirmed, not guessed. Search (`/pdsearch/{query}/`) and category (`{Category}-c-{id}.html`) pages expose a rich, confirmed-real embedded JS state (`window.gbRawData`) with price, brand, rating, review count, and stock/clearance/quickship flags; a single product page (`{slug}-p-{goods_id}.html`) exposes a clean schema.org `ProductGroup` block instead, and the scraper auto-detects which one it was given. A real bot-mitigation gateway was also hit and captured — a redirect to SHEIN's own `/risk/challenge` page — and, notably, it did **not** reproduce on the very next request in the same session, which reads as a per-context risk score rather than a blanket block. What's still open: whether scrolling a results page actually loads more real products past the first batch, and a first live run of this repo's own engines (the capture above came from a browser-rendering tool, not `playwright_scraper.py` itself yet). Full honesty section, with the real captured facts and what's still unconfirmed, in the [repository README](https://github.com/2scraper/shein-scraper#readme) — read it before you point this at anything that matters.
+Listings are read from the page's own embedded product data (`window.gbRawData`), product pages from their schema.org JSON-LD. SHEIN's own bot check (`/risk/challenge`: an "I am human" checkbox, then an image grid or an icon puzzle) is solved automatically through 2Captcha. On 2026-09-30, 3 of 5 fresh US Scraping Browser profiles passed it; SHEIN refused the other two outright, and the run reports that (exit 3) instead of returning bad data. Listings beyond the first ~20 products are not yet verified. Details in the [README](https://github.com/2scraper/shein-scraper#readme).
 
 ## What you get
 
-- Free, open-source scraper, one script per engine — **Playwright** (primary, local-first), **Selenium**, and **Puppeteer** (via pyppeteer), all producing the identical output schema and exit codes
+- Free, open-source scraper, one script per engine — **Playwright** (recommended), **Selenium**, and **Puppeteer** (via pyppeteer), all producing the identical output schema and exit codes
 - Search by term, browse a category, or fetch a single product page — one `--url`/`--query`/`--category` flag set auto-routes to the right parser
-- Reads shein.com's own confirmed-real embedded JS state first, with a schema.org JSON-LD path for single products and a DOM fallback — same family principle as this project's sibling scrapers
-- Fashion-marketplace fields other 2scraper repos don't need: original price, discount %, rating, review count, seller/store code, and clearance/quickship flags
+- Reads shein.com's own confirmed-real embedded JS state first, with a schema.org JSON-LD path for single products and a DOM fallback
+- Fashion-marketplace fields: original price, discount %, rating, review count, seller/store code, and clearance/quickship flags
 - JSON and CSV export, with a documented `Product` schema and a `.meta.json` sidecar on every completed/partial run
 - Optional 2Captcha integration, wired in but never required to get started
 
@@ -44,7 +44,7 @@ Shopping-price researchers, deal-tracking tools, and anyone who wants SHEIN sear
 git clone https://github.com/2scraper/shein-scraper.git
 cd shein-scraper
 pip install -r requirements-playwright.txt && playwright install chromium
-cp .env.example .env   # optional — not required for a normal local-first run
+cp .env.example .env   # TWOCAPTCHA_KEY and SHEIN_CDP_ENDPOINT go here
 
 python3 playwright_scraper.py --query "summer dress" --format json --out shein_results.json
 ```
