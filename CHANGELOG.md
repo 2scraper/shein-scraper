@@ -9,6 +9,11 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-09-30
+
+First public release. Everything below was developed before it; the
+entries are kept in the order they were written.
+
 ### Changed — 2026-09-30, one fetch loop for all three engines (`page_flow.py`, CLAUDE.md §26)
 - The page loop, block/cooldown retries, the Scraper API mode and the
   `finish_run` call were three near-identical copies (2,959 engine lines).
@@ -1058,3 +1063,6 @@ check 3).
   never needed against the real site so far.
 
 [Unreleased]: https://github.com/2scraper/shein-scraper/compare/main...HEAD
+
+[Unreleased]: https://github.com/2scraper/shein-scraper/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/2scraper/shein-scraper/releases/tag/v0.1.0
