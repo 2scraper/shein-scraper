@@ -69,6 +69,14 @@ def _positive_int(value: str) -> int:
     return ivalue
 
 
+def _budget(args) -> "shein_challenge.SolveBudget":
+    """The run's shared paid-solve budget (created in run(); a fresh one
+    for callers that bypass run(), e.g. tests)."""
+    if getattr(args, "_solve_budget", None) is None:
+        args._solve_budget = shein_challenge.SolveBudget(getattr(args, "max_solves", 8))
+    return args._solve_budget
+
+
 def _jittered_delay(base_seconds: float, jitter: float) -> float:
     """Multiply base_seconds by a random factor in [1-jitter, 1+jitter] so
     repeated waits (scroll pauses, retry backoff, a rate-limit cooldown)
@@ -114,6 +122,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "this many rounds of its 3x3 image grid via 2Captcha GridTask (needs TWOCAPTCHA_KEY; the "
              "checkbox step alone needs no key). 0 disables. Skipped with --solve-captcha off. See "
              "shein_challenge.py.",
+    )
+    p.add_argument(
+        "--max-solves", type=int, default=8,
+        help="Cap on PAID 2Captcha solves for the whole run, across every challenge round, block "
+             "retry and scroll round (0 = never pay). Recorded as solves_spent in the sidecar.",
     )
     p.add_argument("--proxy", default=None)
     p.add_argument("--proxy-file", default=None)
@@ -227,7 +240,7 @@ async def _enable_scraping_browser_auto_solve(page) -> None:
 
 
 async def _maybe_solve_captcha(
-    *, html: str, url: str, client: Optional[TwoCaptchaClient], policy: str, min_score: float = 0.3,
+    *, html: str, url: str, client: Optional[TwoCaptchaClient], policy: str, min_score: float = 0.3, args=None,
     page=None, count_product_links=None,
 ) -> Optional[dict]:
     """`count_product_links` defaults to `sp.count_result_cards` — correct
@@ -242,10 +255,16 @@ async def _maybe_solve_captcha(
     silently inheriting the search-page-shaped default."""
     if policy == "off" or client is None:
         return None
+    budget = _budget(args) if args is not None else None
+    if budget is not None and budget.remaining() == 0:
+        log.warning("Captcha solving skipped: the run's solve budget is spent (--max-solves %d).", budget.limit)
+        return None
     result = solve_when_blocked(
         client=client, page_url=url, html=html, count_product_links=count_product_links or sp.count_result_cards,
         extra_markers=sp.BOT_CHALLENGE_MARKERS, min_score=min_score,
     )
+    if budget is not None and result.get("action") in ("solved", "warning_solver_error"):
+        budget.try_spend()  # a task was created and billed, whatever came back
     action = result.get("action")
     if action == "warning_no_key":
         log.warning("Captcha solving skipped: %s", result.get("detail"))
@@ -325,7 +344,7 @@ async def _maybe_pass_risk_challenge(page, args: argparse.Namespace, client: Opt
     if not shein_challenge.on_challenge(page.url) or args.solve_captcha == "off" or args.risk_challenge_rounds <= 0:
         return False
     outcome = await shein_challenge.pass_risk_challenge(
-        _PyppeteerChallengeDriver(page), client, max_rounds=args.risk_challenge_rounds,
+        _PyppeteerChallengeDriver(page), client, max_rounds=args.risk_challenge_rounds, budget=_budget(args),
         debug_dir=_challenge_debug_dir(args),
     )
     if outcome.passed:
@@ -437,7 +456,7 @@ async def scrape_search(
             blocked = True
         captcha_result = None
         if captcha_detected:
-            captcha_result = await _maybe_solve_captcha(html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score, page=page)
+            captcha_result = await _maybe_solve_captcha(html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score, page=page, args=args)
         if captcha_result and captcha_result.get("action") in ("warning_no_key", "warning_solver_error", "detected_unidentified_widget"):
             if sp.count_result_cards(html) == 0:
                 blocked = True
@@ -590,7 +609,7 @@ async def scrape_product_page(
         captcha_result = await _maybe_solve_captcha(
             html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score,
             page=page, count_product_links=lambda h: 1 if sp.parse_product_page(h, url=start_url) else 0,
-        )
+        args=args)
         if captcha_result and captcha_result.get("action") == "solved":
             # No scroll/round loop here to pick the injection up naturally
             # on a later round the way scrape_search() does — a single
@@ -672,6 +691,7 @@ async def run(args: argparse.Namespace) -> int:
     args._rate_limited = False
     args._cooldown_used = False
     args._rejected_rows = 0
+    args._solve_budget = shein_challenge.SolveBudget(args.max_solves)
     started_at = time.time()
     start_url, is_product_page = _resolve_start_url(args)
     if not start_url:
@@ -783,7 +803,7 @@ async def run(args: argparse.Namespace) -> int:
             products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
             pages_requested=1, pages_completed=0 if remote_api_error else 1, failed_pages=None,
             blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, price_confirmed_pct=price_confirmed_pct,
+            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent}, price_confirmed_pct=price_confirmed_pct,
         )
 
     if pyppeteer_launch is None:
@@ -867,7 +887,7 @@ async def run(args: argparse.Namespace) -> int:
         products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
         pages_requested=args.max_scrolls, pages_completed=completed_rounds, failed_pages=failed_pages,
         blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, price_confirmed_pct=price_confirmed_pct,
+        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent}, price_confirmed_pct=price_confirmed_pct,
     )
 
 

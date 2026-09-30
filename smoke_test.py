@@ -2308,6 +2308,62 @@ def _():
             assert "output_sha256" in str(exc)
 
 
+@check("ONE paid-solve budget per run (--max-solves, CLAUDE.md §23 'a cap nothing enforces is a bill'): every task-creating call site is guarded — counted, not assumed — and the grid/icon rounds stop at the cap")
+def _():
+    src = (ROOT / "shein_challenge.py").read_text(encoding="utf-8")
+    assert src.count("await solve(") == src.count("budget.try_spend()") == 2, "each paid solve in shein_challenge needs its own guard"
+    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
+        esrc = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
+        assert esrc.count("solve_when_blocked(") == 1 and esrc.count("budget.remaining() == 0") == 1, mod.__name__
+        assert esrc.count("budget=_budget(args)") == esrc.count("max_rounds=args.risk_challenge_rounds") == 1, mod.__name__
+        calls = esrc.count("_maybe_solve_captcha(") - 1
+        assert esrc.count("args=args)") + esrc.count("args=args,\n") >= calls, f"{mod.__name__}: a solve call site without the run's budget"
+        assert mod.build_arg_parser().parse_args(["--query", "x"]).max_solves == 8
+        assert '"solves_spent": _budget(args).spent' in esrc
+
+    fake = _FakeChallenge(grid_results=["fail", "fail", "fail"])
+    solve, calls = _grid_solver([[1, 2, 3]] * 3)
+    budget = shein_challenge.SolveBudget(1)
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=5, solve=solve, step_timeout=2, budget=budget))
+    assert len(calls) == 1 and budget.spent == 1 and not out.passed, (len(calls), budget.spent)
+    assert "budget exhausted" in out.detail
+    zero = shein_challenge.SolveBudget(0)
+    out = asyncio.run(shein_challenge.pass_risk_challenge(_FakeChallenge(grid_results=["success"]), None, max_rounds=5,
+                                                          solve=_grid_solver([[1, 2, 3]])[0], step_timeout=2, budget=zero))
+    assert zero.spent == 0 and "budget exhausted" in out.detail, "--max-solves 0 must never pay"
+
+
+@check("_maybe_solve_captcha does not even ask the solver once the run's budget is spent, and counts a billed task (solved or solver error) against it — all three engines")
+def _():
+    import captcha_solver as _cs
+    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
+        calls = []
+        original = mod.solve_when_blocked
+        mod.solve_when_blocked = lambda **kw: calls.append(1) or {"action": "warning_solver_error", "detail": "x"}
+        try:
+            args = mod.build_arg_parser().parse_args(["--query", "x", "--max-solves", "1"])
+            client = scraper_api_client.TwoCaptchaClient("fake-key-for-test-only")
+            for _i in range(3):
+                r = mod._maybe_solve_captcha(html="<html></html>", url="u", client=client, policy="when-blocked", args=args)
+                if _inspect.iscoroutine(r):
+                    asyncio.run(r)
+        finally:
+            mod.solve_when_blocked = original
+        assert len(calls) == 1 and mod._budget(args).spent == 1, (mod.__name__, len(calls))
+    assert _cs  # imported for parity with the engines' own import
+
+
+@check("a 2Captcha account error (revoked key / zero balance, seen live 2026-09-30) stops the challenge after ONE round instead of spending every round on it")
+def _():
+    calls = []
+
+    async def solve(task):
+        calls.append(task)
+        raise scraper_api_client.TwoCaptchaError("createTask failed: ERROR_KEY_DOES_NOT_EXIST The API key is missing")
+    out = asyncio.run(shein_challenge.pass_risk_challenge(_FakeChallenge(grid_results=[]), None, max_rounds=5, solve=solve, step_timeout=2))
+    assert len(calls) == 1 and not out.passed and "refused the account" in out.detail, (len(calls), out.detail)
+
+
 def run() -> int:
     """All @check-decorated functions above already ran at import time
     (that's the point — see the `check()` docstring) and self-registered

@@ -9,6 +9,23 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Added — 2026-09-30, one paid-solve budget per run (`--max-solves`)
+- CLAUDE.md §23 ("a cap that nothing enforces is a bill"). Counted before
+  the change: up to 5 grid/icon rounds per challenge pass times 3
+  `--block-retries` passes, plus one generic widget solve per scroll round
+  — nothing summed them. `--max-solves N` (default 8, `0` = never pay) is
+  one `SolveBudget` shared by every task-creating call site; the count
+  spent is `solves_spent` in the sidecar. A check counts the call sites
+  and the guards and requires them equal; it went red with a guard
+  removed.
+- A 2Captcha account error (`ERROR_KEY_DOES_NOT_EXIST`, zero balance, IP
+  not allowed) now stops the challenge after one round. Live on
+  2026-09-30 a revoked key failed all five rounds before giving up.
+- Live, same run: Playwright over a fresh US CDP profile reached the
+  `icon_click` widget ("click the icons in sequence") for the first time
+  in this engine (`validation/check type=click`). Solving it could not be
+  tested because the key had been revoked.
+
 ### Fixed — 2026-09-30, third-party audit (7 findings, all reproduced first)
 > **Behaviour change for pipelines:** a run that has rows but did not
 > finish cleanly now exits `6` (partial) with the cause in `stop_reason`.

@@ -61,6 +61,9 @@ from scraper_api_client import TwoCaptchaAuthError, TwoCaptchaClient, TwoCaptcha
 log = logging.getLogger("shein_challenge")
 
 CHALLENGE_URL_MARKER = "/risk/challenge"
+# 2Captcha answers that no retry can change (live 2026-09-30: a revoked key
+# failed all five rounds, one createTask each, before giving up).
+TERMINAL_SOLVER_ERRORS = ("ERROR_KEY_DOES_NOT_EXIST", "ERROR_WRONG_USER_KEY", "ERROR_ZERO_BALANCE", "ERROR_IP_NOT_ALLOWED")
 CHECKBOX_LABEL = "I am human"
 GRID_ROWS = 3
 GRID_COLUMNS = 3
@@ -164,6 +167,28 @@ class ChallengeDriver(Protocol):
     async def screenshot(self, clip: dict) -> bytes: ...  # clip in PAGE coordinates, CSS px
     async def click(self, x: float, y: float) -> None: ...  # VIEWPORT coordinates, CSS px
     async def sleep(self, seconds: float) -> None: ...
+
+
+class SolveBudget:
+    """One cap on PAID solves for a whole run, shared by every place that
+    creates a 2Captcha task (this module's grid/icon rounds and the
+    engines' generic widget solver). CLAUDE.md §23: a per-pass limit that
+    nothing sums is a bill — here up to 5 rounds x 3 block-retry passes,
+    plus one generic solve per scroll round. `limit=0` means no paid solve
+    at all."""
+
+    def __init__(self, limit: int):
+        self.limit = max(0, int(limit))
+        self.spent = 0
+
+    def remaining(self) -> int:
+        return max(0, self.limit - self.spent)
+
+    def try_spend(self) -> bool:
+        if self.spent >= self.limit:
+            return False
+        self.spent += 1
+        return True
 
 
 @dataclass
@@ -341,6 +366,7 @@ async def pass_risk_challenge(
     driver: ChallengeDriver, client: Optional[TwoCaptchaClient], *, max_rounds: int = 5,
     rng: Optional[random.Random] = None, solve: Optional[Callable[[dict], Awaitable[str]]] = None,
     step_timeout: float = 12.0, redirect_timeout: float = 20.0, debug_dir: Optional[str] = None,
+    budget: Optional[SolveBudget] = None,
 ) -> ChallengeOutcome:
     """Drives one_pass -> (nine_captcha | icon_click) until the page leaves
     `/risk/challenge`. Each round handles whichever solvable widget SHEIN
@@ -388,12 +414,16 @@ async def pass_risk_challenge(
         icon_png = await driver.screenshot(rect_clip(state["icon"], scroll)) if state.get("icon") else None
         dump(f"round{round_num}_grid.png", grid_png)
         dump(f"round{round_num}_icon.png", icon_png)
+        if budget is not None and not budget.try_spend():
+            return f"solve budget exhausted ({budget.limit} paid solve(s) per run, --max-solves)"
         try:
             solution = await solve(build_grid_task(grid_png, icon_png))
         except TwoCaptchaAuthError as exc:
             return f"2Captcha auth error: {exc}"
         except TwoCaptchaError as exc:
             log.warning("SHEIN risk challenge round %d: GridTask failed: %s", round_num, exc)
+            if any(code in str(exc) for code in TERMINAL_SOLVER_ERRORS):
+                return f"2Captcha refused the account: {exc}"
             await refresh(state)
             return None
         outcome.solves += 1
@@ -432,12 +462,16 @@ async def pass_risk_challenge(
         icons_png = await driver.screenshot(rect_clip(state["icons"], scroll))
         dump(f"round{round_num}_image.png", image_png)
         dump(f"round{round_num}_icons.png", icons_png)
+        if budget is not None and not budget.try_spend():
+            return f"solve budget exhausted ({budget.limit} paid solve(s) per run, --max-solves)"
         try:
             solution = await solve(build_coordinates_task(image_png, icons_png))
         except TwoCaptchaAuthError as exc:
             return f"2Captcha auth error: {exc}"
         except TwoCaptchaError as exc:
             log.warning("SHEIN risk challenge round %d: CoordinatesTask failed: %s", round_num, exc)
+            if any(code in str(exc) for code in TERMINAL_SOLVER_ERRORS):
+                return f"2Captcha refused the account: {exc}"
             await refresh(state)
             return None
         outcome.solves += 1
