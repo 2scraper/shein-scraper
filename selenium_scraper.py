@@ -35,7 +35,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional
 from urllib.parse import urlparse
 
 try:
@@ -55,13 +55,14 @@ else:
     _SELENIUM_IMPORT_ERROR = None
 
 import env_config
+import page_flow
 import shein_challenge
 import shein_parser as sp
-from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
-from output_writer import EXIT_BAD_USAGE, EXIT_CRASH, EXIT_REMOTE_API_ERROR, Product, finish_run, sku_key as _sku_key
-from proxy_pool import Proxy, ProxyPool, ProxyParseError, is_proxy_dead_error, load_proxies
+from captcha_solver import CaptchaType, build_injection_script, solve_when_blocked
+from output_writer import EXIT_BAD_USAGE, EXIT_CRASH
+from proxy_pool import Proxy, ProxyPool, ProxyParseError, load_proxies
 from fingerprint_client import fetch_fingerprint, refuse_if_cdp, user_agent_from
-from scraper_api_client import TwoCaptchaAuthError, TwoCaptchaClient, TwoCaptchaError
+from scraper_api_client import TwoCaptchaClient
 
 ENGINE_NAME = "selenium"
 NAV_TIMEOUT_S = 30
@@ -92,15 +93,8 @@ def _budget(args) -> "shein_challenge.SolveBudget":
     return args._solve_budget
 
 
-def _jittered_delay(base_seconds: float, jitter: float) -> float:
-    """Multiply base_seconds by a random factor in [1-jitter, 1+jitter] so
-    repeated waits (scroll pauses, retry backoff, a rate-limit cooldown)
-    aren't perfectly periodic — an easy signal for a site's own rate/
-    bot-detection heuristics to key off of. jitter<=0 disables this (e.g.
-    for reproducible tests); never returns a negative delay."""
-    if base_seconds <= 0 or jitter <= 0:
-        return base_seconds
-    return max(0.0, base_seconds * random.uniform(1 - jitter, 1 + jitter))
+_jittered_delay = page_flow.jittered_delay  # the one implementation is page_flow's
+
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -377,19 +371,21 @@ def _challenge_debug_dir(args: argparse.Namespace) -> Optional[str]:
     return str(Path(args.out).with_suffix("")) + "_challenge" if args.dump_html else None
 
 
-def _maybe_pass_risk_challenge(driver, args: argparse.Namespace, client: Optional[TwoCaptchaClient]) -> bool:
+async def _pass_risk_challenge_async(driver, args: argparse.Namespace, client: Optional[TwoCaptchaClient]) -> bool:
     """True when the page has left SHEIN's /risk/challenge gateway — see
-    playwright_scraper._maybe_pass_risk_challenge."""
+    playwright_scraper._maybe_pass_risk_challenge. Async so the shared
+    page_flow loop can await it (the sync wrapper below is for callers
+    outside a running loop)."""
     try:
         current_url = driver.current_url
     except WebDriverException:
         return False
     if not shein_challenge.on_challenge(current_url) or args.solve_captcha == "off" or args.risk_challenge_rounds <= 0:
         return False
-    outcome = asyncio.run(shein_challenge.pass_risk_challenge(
+    outcome = await shein_challenge.pass_risk_challenge(
         _SeleniumChallengeDriver(driver), client, max_rounds=args.risk_challenge_rounds, budget=_budget(args),
         debug_dir=_challenge_debug_dir(args),
-    ))
+    )
     if outcome.passed:
         log.info("Passed SHEIN's risk challenge (%s; %d paid solve(s)).", outcome.detail, outcome.solves)
         time.sleep(READINESS_WAIT_S)
@@ -398,355 +394,82 @@ def _maybe_pass_risk_challenge(driver, args: argparse.Namespace, client: Optiona
     return outcome.passed
 
 
-def scrape_search(
-    *, args: argparse.Namespace, start_url: str,
-    proxy_pool: Optional[ProxyPool], client: Optional[TwoCaptchaClient],
-    user_agent: Optional[str] = None,
-) -> Tuple[List[Product], bool, bool, int, bool]:
-    blocked = False
-    remote_api_error = False
-    scroll_error = False
+def _maybe_pass_risk_challenge(driver, args: argparse.Namespace, client: Optional[TwoCaptchaClient]) -> bool:
+    return asyncio.run(_pass_risk_challenge_async(driver, args, client))
 
-    proxy = proxy_pool.next() if proxy_pool else None
-    log.info("Using proxy %s", proxy.masked() if proxy else "(no local proxy pool — direct connection, or a --cdp-endpoint session providing its own exit)")
-    driver = _build_driver(headless=args.headless, proxy=proxy, cdp_endpoint=args.cdp_endpoint, user_agent=user_agent)
 
-    last_error = None
-    status = None
-    for attempt in range(args.retries + 1):
+class _SeleniumSession:
+    """page_flow.PageSession over one Selenium driver (sync WebDriver calls
+    inside coroutines; the shared loop runs under asyncio.run in run())."""
+
+    def __init__(self, driver, args: argparse.Namespace):
+        self.driver, self.args = driver, args
+
+    async def goto(self, url: str) -> Optional[int]:
+        self.driver.set_page_load_timeout(NAV_TIMEOUT_S)
+        self.driver.get(url)
+        time.sleep(READINESS_WAIT_S)
         try:
-            driver.set_page_load_timeout(NAV_TIMEOUT_S)
-            driver.get(start_url)
-            time.sleep(READINESS_WAIT_S)
-            try:
-                reported = driver.execute_script(_STATUS_JS)
-                status = int(reported) if reported else None
-            except WebDriverException:
-                pass
-            if proxy_pool is not None and proxy is not None:
-                proxy_pool.report_success(proxy)
-            last_error = None
-            break
-        except WebDriverException as exc:
-            message = str(exc)
-            last_error = message
-            dead = is_proxy_dead_error(message)
-            if proxy_pool is not None and proxy is not None and dead:
-                proxy_pool.report_failure(proxy, dead=True)
-                log.warning("Proxy reported dead: %s", message)
-            else:
-                log.warning("Navigation attempt %d/%d failed: %s", attempt + 1, args.retries + 1, message)
-            if attempt < args.retries:
-                time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
-
-    if last_error is not None:
-        driver.quit()
-        log.error("Search page permanently failed to load: %s", last_error)
-        return [], False, True, 0, False
-
-    # REAL, confirmed-live incidents (shein_parser.py's module docstring —
-    # TWO distinct endpoints now, a captcha-shaped /risk/challenge and a
-    # rate-limit /risk/action/limit): both silently redirect, no >=400
-    # status involved — the current URL is the most direct signal.
-    try:
-        current_url = driver.current_url
-    except WebDriverException:
-        current_url = start_url
-    if "/risk/action/limit" in current_url:
-        args._rate_limited = True
-    if _maybe_pass_risk_challenge(driver, args, client):
-        status = None
-        try:
-            current_url = driver.current_url
+            reported = self.driver.execute_script(_STATUS_JS)
+            return int(reported) if reported else None
         except WebDriverException:
+            return None
+
+    async def url(self) -> str:
+        try:
+            return self.driver.current_url
+        except WebDriverException:
+            return ""
+
+    async def content(self) -> str:
+        return self.driver.page_source
+
+    async def gb_raw_data(self) -> Optional[dict]:
+        try:
+            return self.driver.execute_script(_GB_RAW_DATA_JS)
+        except WebDriverException as exc:
+            log.debug("gbRawData read failed, will fall back to HTML extraction: %s", exc)
+            return None
+
+    async def scroll(self) -> None:
+        self.driver.execute_script("window.scrollBy(0, Math.max(Math.floor(window.innerHeight * 0.8), 600));")
+
+    async def pass_risk_challenge(self, client: Optional[TwoCaptchaClient]) -> bool:
+        return await _pass_risk_challenge_async(self.driver, self.args, client)
+
+    async def solve_captcha(self, *, html: str, url: str, client: Optional[TwoCaptchaClient], count_product_links=None):
+        return _maybe_solve_captcha(html=html, url=url, client=client, policy=self.args.solve_captcha,
+                                    min_score=self.args.min_score, driver=self.driver,
+                                    count_product_links=count_product_links, args=self.args)
+
+    async def close(self) -> None:
+        try:
+            self.driver.quit()
+        except Exception:  # noqa: BLE001 — cleanup only
             pass
-    if any(marker in current_url for marker in sp.RISK_GATEWAY_URL_MARKERS):
-        log.warning("Redirected to SHEIN's own risk gateway (%s) — treating as blocked.", current_url)
-        blocked = True
-
-    if status is not None and status >= 400:
-        log.warning("Search page returned HTTP %d — treating as blocked, not empty.", status)
-        blocked = True
-
-    seen_skus: set = set()
-    merged: List[Product] = []
-    stall = 0
-    previous_product_count = -1
-    rounds = 0
-
-    for round_num in range(args.max_scrolls + 1):
-        rounds = round_num
-        if args._rate_limited:
-            break
-        html = driver.page_source
-        try:
-            raw_data = driver.execute_script(_GB_RAW_DATA_JS)
-        except WebDriverException:
-            raw_data = None
-        cards_present = sp.count_result_cards(html) > 0
-        # See playwright_scraper.py's own version of this comment (same
-        # fix, same live evidence — Roman, 2026-09-22, captcha_type=909):
-        # SHEIN's /risk/challenge SSR state embeds its redirect URL as
-        # stale TEXT that can outlive the actual gate, so a marker match
-        # past round 0 is only trusted when the CURRENT url still shows
-        # the gateway too.
-        captcha_detected = detect_from_html(html, sp.BOT_CHALLENGE_MARKERS)
-        if captcha_detected and round_num > 0:
-            try:
-                round_url = driver.current_url
-            except WebDriverException:
-                round_url = start_url
-            if not any(marker in round_url for marker in sp.RISK_GATEWAY_URL_MARKERS):
-                log.warning(
-                    "A bot-mitigation marker matched stale page text, but the page has moved on "
-                    "to %s (%s) — not re-flagging this round as a captcha block.",
-                    round_url, sp.diagnose_unexpected_page(html),
-                )
-                captcha_detected = False
-        if captcha_detected and not cards_present:
-            blocked = True
-        captcha_result = None
-        if captcha_detected:
-            captcha_result = _maybe_solve_captcha(html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score, driver=driver, args=args)
-        if captcha_result and captcha_result.get("action") in ("warning_no_key", "warning_solver_error", "detected_unidentified_widget"):
-            if sp.count_result_cards(html) == 0:
-                blocked = True
-
-        result = sp.safe_parse_search_results(html, max_results=args.max_results, raw_data=raw_data)
-        args._rejected_rows = max(getattr(args, "_rejected_rows", 0), result.rejected_rows)
-        if result.source_used == "none" and round_num == 0 and not blocked:
-            # Parity fix, added alongside Playwright's own version of this
-            # warning — this engine had NO diagnostic here at all before.
-            # See shein_parser.diagnose_unexpected_page's docstring — a
-            # real, live 2026-09-21 case (Roman's own first engine run)
-            # hit a page that wasn't blocked, wasn't a parse bug, but
-            # genuinely wasn't a search-results page at all.
-            try:
-                current_url = driver.current_url
-            except WebDriverException:
-                current_url = start_url
-            log.warning(
-                "No products recognised on the first render (%s, final URL: %s) — either "
-                "this search genuinely has no results, shein_parser.py's window.gbRawData "
-                "path needs updating for the current shein.com markup, or shein.com served "
-                "a DIFFERENT page than search results for this request (a real, not just "
-                "hypothetical, case — see shein_parser.py's module docstring, "
-                "'First real engine run' section). Re-run with --dump-html to inspect the "
-                "captured page.",
-                sp.diagnose_unexpected_page(html), current_url,
-            )
-        round_skus = {_sku_key(p) for p in result.products}
-        new_skus = round_skus - seen_skus
-        current_product_count = len(round_skus)
-        if new_skus:
-            for p in result.products:
-                if _sku_key(p) in new_skus:
-                    merged.append(p)
-            seen_skus |= new_skus
-            stall = 0
-        else:
-            if previous_product_count == current_product_count:
-                stall += 1
-            else:
-                stall = 0
-        previous_product_count = current_product_count
-
-        if result.products:
-            blocked = False
-
-        if len(merged) >= args.max_results:
-            merged = merged[: args.max_results]
-            break
-        if round_num >= args.max_scrolls:
-            break
-        if stall >= args.stall_rounds:
-            break
-
-        try:
-            # See playwright_scraper.py's identical loop for why this is
-            # written defensively around whether scrolling actually grows
-            # window.gbRawData with more real products (UNCONFIRMED).
-            driver.execute_script(
-                "window.scrollBy(0, Math.max(Math.floor(window.innerHeight * 0.8), 600));"
-            )
-        except WebDriverException as exc:
-            log.warning("Scroll failed, stopping pagination early: %s", exc)
-            scroll_error = True
-            break
-        time.sleep(_jittered_delay(args.scroll_delay, args.delay_jitter))
-
-    final_html = driver.page_source
-    try:
-        final_raw_data = driver.execute_script(_GB_RAW_DATA_JS)
-    except WebDriverException:
-        final_raw_data = None
-    total_available = sp.total_result_count(final_html, raw_data=final_raw_data)
-    args._total_results = total_available
-    expected = min(total_available, args.max_results) if total_available is not None else None
-    if expected is not None and len(merged) < expected:
-        log.warning(
-            "Fewer products collected than SHEIN reports available: reports %d, requested %d, collected %d.",
-            total_available, args.max_results, len(merged),
-        )
-        scroll_error = True
-
-    if args.dump_html:
-        Path(_dump_path(args.out)).write_text(final_html, encoding="utf-8")
-
-    driver.quit()
-    return merged, blocked, remote_api_error, rounds, scroll_error
 
 
-def scrape_product_page(
-    *, args: argparse.Namespace, start_url: str,
-    proxy_pool: Optional[ProxyPool], client: Optional[TwoCaptchaClient],
-    user_agent: Optional[str] = None,
-) -> Tuple[List[Product], bool, bool, int, bool]:
-    blocked = False
-    remote_api_error = False
-    proxy = proxy_pool.next() if proxy_pool else None
-    driver = _build_driver(headless=args.headless, proxy=proxy, cdp_endpoint=args.cdp_endpoint, user_agent=user_agent)
+class _SeleniumEngine:
+    """page_flow.Engine for Selenium: a fresh driver per attempt (Selenium
+    has no separate context object; a rotation is a fresh browser)."""
 
-    last_error = None
-    status = None
-    for attempt in range(args.retries + 1):
-        try:
-            driver.set_page_load_timeout(NAV_TIMEOUT_S)
-            driver.get(start_url)
-            time.sleep(READINESS_WAIT_S)
-            try:
-                reported = driver.execute_script(_STATUS_JS)
-                status = int(reported) if reported else None
-            except WebDriverException:
-                pass
-            last_error = None
-            break
-        except WebDriverException as exc:
-            last_error = str(exc)
-            log.warning("Navigation attempt %d/%d failed: %s", attempt + 1, args.retries + 1, last_error)
-            if attempt < args.retries:
-                time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
+    name = ENGINE_NAME
+    readiness_s = READINESS_WAIT_S
 
-    if last_error is not None:
-        driver.quit()
-        return [], False, True, 0, False
+    def __init__(self, args: argparse.Namespace, *, user_agent: Optional[str]):
+        self.args, self.user_agent = args, user_agent
 
-    try:
-        current_url = driver.current_url
-    except WebDriverException:
-        current_url = start_url
-    if "/risk/action/limit" in current_url:
-        args._rate_limited = True
-    if _maybe_pass_risk_challenge(driver, args, client):
-        status = None
-        try:
-            current_url = driver.current_url
-        except WebDriverException:
-            pass
-    if any(marker in current_url for marker in sp.RISK_GATEWAY_URL_MARKERS):
-        blocked = True
-    if status is not None and status >= 400:
-        blocked = True
+    async def open(self, proxy) -> _SeleniumSession:
+        driver = _build_driver(headless=self.args.headless, proxy=proxy, cdp_endpoint=self.args.cdp_endpoint,
+                               user_agent=self.user_agent)
+        return _SeleniumSession(driver, self.args)
 
-    html = driver.page_source
-    # Fixed 2026-09-22 (documented in README "Known limitations" as a real,
-    # confirmed, not-yet-fixed gap): this path never attempted captcha
-    # solving at all — only scrape_search()'s round loop called
-    # _maybe_solve_captcha. `count_product_links` here is product-page-
-    # shaped (did the page already parse?), not search-page-shaped — see
-    # _maybe_solve_captcha's own docstring for why passing the default
-    # would be wrong here. (No --cdp-endpoint autosolve equivalent here —
-    # Selenium refuses that flag outright, CLAUDE.md §6 — but the classic
-    # captcha-API + local-injection path this uses on every other engine's
-    # local-browser mode applies here exactly the same way.)
-    captcha_result = None
-    if detect_from_html(html, sp.BOT_CHALLENGE_MARKERS):
-        captcha_result = _maybe_solve_captcha(
-            html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score,
-            driver=driver, count_product_links=lambda h: 1 if sp.parse_product_page(h, url=start_url) else 0,
-        args=args)
-        if captcha_result and captcha_result.get("action") == "solved":
-            # No scroll/round loop here to pick the injection up naturally
-            # on a later round the way scrape_search() does — a single
-            # re-fetch after a beat is what actually gives this attempt a
-            # chance to matter, rather than solving/injecting a token that
-            # nothing ever re-reads.
-            time.sleep(READINESS_WAIT_S)
-            html = driver.page_source
-        elif captcha_result and captcha_result.get("action") in ("warning_no_key", "warning_solver_error", "detected_unidentified_widget"):
-            if not sp.parse_product_page(html, url=start_url):
-                blocked = True
-
-    product = sp.parse_product_page(html, url=start_url)
-    if args.dump_html:
-        Path(_dump_path(args.out)).write_text(html, encoding="utf-8")
-    driver.quit()
-    products = [product] if product else []
-    if not products and not blocked:
-        log.warning("Product page rendered but no ProductGroup/Product JSON-LD was found — see shein_parser.py.")
-    return products, blocked, remote_api_error, 0, False
-
-
-def _scrape_via_scraper_api(
-    *, args: argparse.Namespace, start_url: str, is_product_page: bool, client: TwoCaptchaClient,
-    cdp_url: Optional[str] = None,
-) -> Tuple[List[Product], bool, bool, int, bool]:
-    """--scraper-api's own fetch path — see playwright_scraper.py's copy of
-    this function for the full rationale (identical logic, duplicated per
-    engine per this family's own convention — CLAUDE.md §4). One
-    browserless HTTP call, no scroll loop, no live page/DOM. `cdp_url`,
-    when --scraper-api-cdp set one (see run()), routes this fetch through
-    2Captcha's own Scraping Browser instead of their default pool — real
-    captcha auto-solve and the selected account's proxy settings apply on 2Captcha's side of
-    that session, nothing here needs to change beyond passing it through."""
-    try:
-        result = client.scrape_url(start_url, timeout=args.scraper_api_timeout, cdp_url=cdp_url)
-    except TwoCaptchaAuthError as exc:
-        log.error("Scraper API: %s", exc)
-        return [], False, True, 0, False
-    except TwoCaptchaError as exc:
-        log.error("Scraper API request failed — treating as remote_api_error, not a crash: %s", exc)
-        return [], False, True, 0, False
-
-    html = result.body
-    if "/risk/action/limit" in html:
-        args._rate_limited = True
-    blocked = False
-    if result.target_status is not None and result.target_status >= 400:
-        log.warning("Scraper API: target page returned HTTP %d — treating as blocked.", result.target_status)
-        blocked = True
-    if detect_from_html(html, sp.BOT_CHALLENGE_MARKERS):
-        blocked = True
-
-    if args.dump_html:
-        Path(_dump_path(args.out)).write_text(html, encoding="utf-8")
-
-    if is_product_page:
-        product = sp.parse_product_page(html, url=start_url)
-        products = [product] if product else []
-        if not products and not blocked:
-            log.warning("Product page fetched via Scraper API but no ProductGroup/Product JSON-LD was found.")
-        return products, blocked, False, 0, False
-
-    parsed = sp.safe_parse_search_results(html, max_results=args.max_results)
-    args._rejected_rows = max(getattr(args, "_rejected_rows", 0), parsed.rejected_rows)
-    if parsed.source_used == "none" and not blocked:
-        log.warning(
-            "No products recognised in the Scraper API response (%s) — either this search "
-            "genuinely has no results, or the fetch landed on a page/locale this repo's parser "
-            "doesn't recognise (--scraper-api's help text has the known locale caveat). Re-run "
-            "with --dump-html to inspect what actually came back.",
-            sp.diagnose_unexpected_page(html),
-        )
-    return parsed.products, blocked, False, 0, False
+    async def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
 
 
 def run(args: argparse.Namespace) -> int:
-    args._rate_limited = False
-    args._cooldown_used = False
-    args._rejected_rows = 0
-    args._total_results = None
-    args._solve_budget = shein_challenge.SolveBudget(args.max_solves)
+    page_flow.init_run_state(args, shein_challenge.SolveBudget)
     started_at = time.time()
     start_url, is_product_page = _resolve_start_url(args)
     if not start_url:
@@ -763,104 +486,12 @@ def run(args: argparse.Namespace) -> int:
     if args.scraper_api_cdp and not args.scraper_api:
         print("Error: --scraper-api-cdp requires --scraper-api", file=sys.stderr)
         return EXIT_BAD_USAGE
-
     if args.scraper_api:
-        # A whole separate, browserless code path — no Selenium/chromedriver
-        # is needed at all here (see CLAUDE.md §6), so none of the checks
-        # below (webdriver import, --cdp-endpoint credential shape) apply.
         if not args.twocaptcha_key:
             print("Error: --scraper-api requires --twocaptcha-key/TWOCAPTCHA_KEY", file=sys.stderr)
             return EXIT_BAD_USAGE
-        if args.proxy or args.proxy_file or args.cdp_endpoint or args.fingerprint:
-            log.warning(
-                "--scraper-api ignores --proxy/--proxy-file/--cdp-endpoint/--fingerprint — this mode "
-                "brings its own exit IP/device via 2Captcha's own infrastructure, see --scraper-api's "
-                "help text."
-            )
-        if (args.scraper_api_country or args.scraper_api_profile_id or args.scraper_api_account_id) and not args.scraper_api_cdp:
-            log.warning(
-                "--scraper-api-country/--scraper-api-account-id/--scraper-api-profile-id are ignored without --scraper-api-cdp "
-                "— there is no Scraping Browser session for them to apply to."
-            )
-        client = TwoCaptchaClient(args.twocaptcha_key, api_base=args.captcha_api, scraper_api_base=args.scraper_api_url)
-        cdp_url = None
-        if args.scraper_api_cdp and not args.scraper_api_profile_id:
-            log.warning(
-                "--scraper-api-cdp without --scraper-api-profile-id — each run gets a fresh "
-                "profile from 2Captcha's default pool instead of a warmed, reused identity. "
-                "Pass --scraper-api-profile-id to reuse one across runs (see "
-                "scraping_browser_connection_url's docstring and README/TESTING.md)."
-            )
-        if args.scraper_api_cdp:
-            try:
-                cdp_url = client.scraping_browser_connection_url(
-                    country=args.scraper_api_country, profile_id=args.scraper_api_profile_id,
-                    account_id=args.scraper_api_account_id,
-                )
-            except TwoCaptchaError as exc:
-                log.error("Scraping Browser connection setup failed: %s", exc)
-                return EXIT_REMOTE_API_ERROR
-        blocked = remote_api_error = False
-        merged: List[Product] = []
-        cdp_fallback_used = False
-        # A counter, not range(): the one --rate-limit-cooldown retry must not
-        # spend a --block-retries attempt (audit 2026-09-30: with --block-retries 0
-        # the promised retry never ran, because `continue` ended the loop).
-        block_attempt = 0
-        while True:
-            merged, blocked, remote_api_error, rounds, scroll_error = _scrape_via_scraper_api(
-                args=args, start_url=start_url, is_product_page=is_product_page, client=client,
-                cdp_url=cdp_url,
-            )
-            if remote_api_error and cdp_url is not None and not cdp_fallback_used:
-                # See playwright_scraper.py's identical fallback for the
-                # full rationale (duplicated per engine per CLAUDE.md §4).
-                log.warning(
-                    "--scraper-api-cdp's Scraping Browser session failed — falling back to "
-                    "--scraper-api's plain default pool for the rest of this run instead of "
-                    "giving up outright. This run no longer has --scraper-api-cdp's country/"
-                    "profile selection or 2Captcha's own captcha auto-solve."
-                )
-                cdp_fallback_used = True
-                cdp_url = None
-                merged, blocked, remote_api_error, rounds, scroll_error = _scrape_via_scraper_api(
-                    args=args, start_url=start_url, is_product_page=is_product_page, client=client,
-                    cdp_url=cdp_url,
-                )
-            if args._rate_limited:
-                if args.rate_limit_cooldown > 0 and not args._cooldown_used:
-                    args._cooldown_used = True
-                    args._rate_limited = False
-                    _wait_s = _jittered_delay(args.rate_limit_cooldown, args.delay_jitter)
-                    log.warning(
-                        "SHEIN rate limit reached — waiting %.0fs (opt-in --rate-limit-cooldown, "
-                        "honoring the ~5 minute cooldown observed live) before ONE retry on the "
-                        "same session, instead of giving up immediately.",
-                        _wait_s,
-                    )
-                    time.sleep(_wait_s)
-                    continue
-                log.warning("SHEIN rate limit reached; stopping this run without block retries. Try again after at least five minutes.")
-                break
-            if remote_api_error or not (blocked and not merged):
-                break
-            if block_attempt >= args.block_retries:
-                break
-            block_attempt += 1
-            log.warning(
-                "Blocked with zero products (Scraper API attempt %d/%d) — retrying the same "
-                "fetch before giving up.",
-                block_attempt, args.block_retries + 1,
-            )
-            time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
-        price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
-        return finish_run(
-            products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
-            pages_requested=1, pages_completed=0 if remote_api_error else 1, failed_pages=None,
-            blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent, "sort": getattr(args, "sort", None)},
-            rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None), price_confirmed_pct=price_confirmed_pct,
-        )
+        return asyncio.run(page_flow.run_scraper_api(args, start_url=start_url, is_product_page=is_product_page,
+                                                     engine_name=ENGINE_NAME, started_at=started_at))
 
     if args.cdp_endpoint and _cdp_endpoint_has_credentials(args.cdp_endpoint):
         print(
@@ -890,8 +521,7 @@ def run(args: argparse.Namespace) -> int:
         client = TwoCaptchaClient(args.twocaptcha_key, api_base=args.captcha_api)
 
     user_agent = None
-    cdp_refused_fingerprint = refuse_if_cdp(args.cdp_endpoint)
-    if args.fingerprint and not cdp_refused_fingerprint:
+    if args.fingerprint and not refuse_if_cdp(args.cdp_endpoint):
         if client is None:
             log.warning("--fingerprint requested but no --twocaptcha-key/TWOCAPTCHA_KEY set — continuing without one.")
         else:
@@ -900,58 +530,13 @@ def run(args: argparse.Namespace) -> int:
                 user_agent = user_agent_from(profile)
 
     try:
-        scrape_fn = scrape_product_page if is_product_page else scrape_search
-        # "Retry before you rotate" — see playwright_scraper.py's own copy of
-        # this comment and --block-retries' help text for the sibling-repo
-        # evidence this is based on.
-        # A counter, not range(): the one --rate-limit-cooldown retry must not
-        # spend a --block-retries attempt (audit 2026-09-30: with --block-retries 0
-        # the promised retry never ran, because `continue` ended the loop).
-        block_attempt = 0
-        while True:
-            merged, blocked, remote_api_error, rounds, scroll_error = scrape_fn(
-                args=args, start_url=start_url, proxy_pool=proxy_pool, client=client, user_agent=user_agent,
-            )
-            if args._rate_limited:
-                if args.rate_limit_cooldown > 0 and not args._cooldown_used:
-                    args._cooldown_used = True
-                    args._rate_limited = False
-                    _wait_s = _jittered_delay(args.rate_limit_cooldown, args.delay_jitter)
-                    log.warning(
-                        "SHEIN rate limit reached — waiting %.0fs (opt-in --rate-limit-cooldown, "
-                        "honoring the ~5 minute cooldown observed live) before ONE retry on the "
-                        "same session, instead of giving up immediately.",
-                        _wait_s,
-                    )
-                    time.sleep(_wait_s)
-                    continue
-                log.warning("SHEIN rate limit reached; stopping this run without block retries. Try again after at least five minutes.")
-                break
-            if not (blocked and not merged):
-                break
-            if block_attempt >= args.block_retries:
-                break
-            block_attempt += 1
-            log.warning(
-                "Blocked with zero products (attempt %d/%d) — retrying before giving up.",
-                block_attempt, args.block_retries + 1,
-            )
-            time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
-        price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
+        return asyncio.run(page_flow.run_browser(
+            _SeleniumEngine(args, user_agent=user_agent), args, start_url=start_url,
+            is_product_page=is_product_page, proxy_pool=proxy_pool, client=client, started_at=started_at,
+        ))
     except Exception:
         log.exception("Unhandled error — this is a crash, not a normal blocked/empty run")
         return EXIT_CRASH
-
-    completed_rounds = rounds + 1
-    failed_pages = [completed_rounds + 1] if scroll_error else None
-
-    return finish_run(
-        products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
-        pages_requested=args.max_scrolls, pages_completed=completed_rounds, failed_pages=failed_pages,
-        blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent, "sort": getattr(args, "sort", None)},
-            rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None), price_confirmed_pct=price_confirmed_pct,
-    )
 
 
 def main() -> int:

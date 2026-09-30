@@ -370,9 +370,15 @@ a plausible-looking `complete` result.
 
 ## Engines
 
-Playwright is primary; Selenium and pyppeteer are parity copies — all three
-agree on exit codes and the `Product` schema via the shared `output_writer.
-finish_run()`. Real, stated limits (identical to the rest of the family's,
+Playwright is primary; Selenium and pyppeteer exist for parity. **All
+three run ONE fetch loop, `page_flow.py`** (CLAUDE.md §26): navigation
+with dead-proxy detection, SHEIN's gateways, the challenge pass, the
+scroll-merge, `--block-retries` and the cooldown retry, the Scraper API
+mode, and the single `finish_run` call. Each engine only provides a page
+session with named operations (`goto`, `url`, `content`, `gb_raw_data`,
+`scroll`, `pass_risk_challenge`, `solve_captcha`, `close`) in its own
+driver's dialect; a check derives that operation set from `page_flow`'s
+AST and requires every engine to provide it. Real, stated limits (identical to the rest of the family's,
 since these are properties of the drivers, not the site):
 
 - **Selenium cannot use an authenticated remote CDP endpoint.**

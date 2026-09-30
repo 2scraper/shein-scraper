@@ -509,6 +509,13 @@ async def pass_risk_challenge(
         )
         if not on_challenge(url):
             return "success"
+        # Live 2026-09-30, twice: an accepted answer swapped the sprite
+        # BEFORE redirecting, with no "Successful!" readable yet — give the
+        # redirect a moment before calling the round a rejection.
+        if not _SUCCESS_TIPS_RE.search(after.get("tips") or "") and "fail" not in (after.get("tips") or "").lower():
+            url, _late = await _wait_for(driver, _left_gateway, 4.0)
+            if not on_challenge(url):
+                return "success"
         log.warning("SHEIN risk challenge round %d not accepted (widget said %r) — retrying with the next image.",
                     round_num, after.get("tips") or "")
         return None
@@ -555,6 +562,7 @@ async def pass_risk_challenge(
             )
             if not on_challenge(url):
                 outcome.passed = True
+                outcome.detail = outcome.detail or f"passed (redirected after round {round_num - 1})"
                 return outcome
             if not _ready(state, previous_srcs):
                 outcome.detail = f"no fresh solvable widget (stage {state.get('stage')!r})"

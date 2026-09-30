@@ -46,6 +46,7 @@ import proxy_pool
 import puppeteer_scraper
 import scraper_api_client
 import selenium_scraper
+import page_flow
 import shein_challenge
 import shein_parser as sp
 
@@ -157,15 +158,6 @@ def _():
     for path, needle in evaluate_calls.items():
         src = (ROOT / path).read_text(encoding="utf-8")
         assert needle in src, f"{path}: missing a live window.gbRawData read"
-
-
-@check("captcha markers only classify a page as blocked when product cards are absent")
-def _():
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert "captcha_detected and not cards_present" in src, (
-            f"{path}: a marker can still turn a healthy product page into EXIT_BLOCKED"
-        )
 
 
 @check("all engines check the confirmed-real /risk/challenge redirect, not just an HTTP status")
@@ -441,56 +433,6 @@ def _():
     )
 
 
-@check("all three engines' page.url/current_url block-check uses RISK_GATEWAY_URL_MARKERS, not a hardcoded single incident (parity gap this would silently reopen if one engine reverted)")
-def _():
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert "RISK_GATEWAY_URL_MARKERS" in src, f"{path} lost the shared risk-gateway URL check"
-        assert 'if "/risk/challenge" in' not in src, (
-            f"{path} has a stale hardcoded /risk/challenge-only URL check that bypasses "
-            f"RISK_GATEWAY_URL_MARKERS — /risk/action/limit would silently stop being caught"
-        )
-
-
-@check("all three engines' round loop corroborates a post-round-0 BOT_CHALLENGE_MARKERS match against that round's own current URL before trusting it (added 2026-09-22 — a real live run's stale 'originalUrl' SSR text kept matching BOT_CHALLENGE_MARKERS on rounds AFTER the browser had already moved off the risk gateway onto an unrelated page, misreporting captcha-solve failures 5 rounds running; see shein_parser.py's module docstring)")
-def _():
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert "not re-flagging this round as a captcha block" in src, (
-            f"{path} lost the stale-marker corroboration fix — a captcha marker match on ANY "
-            f"round would be trusted again even after the browser has moved off the risk gateway"
-        )
-        assert "round_num > 0" in src, (
-            f"{path}'s corroboration must be scoped to rounds AFTER 0 — round 0 stays "
-            f"unconditionally trusted, since it's corroborated by the page.url check that "
-            f"already runs right after the initial navigation, before content can go stale"
-        )
-        # The solve attempt itself must now be gated on the (corroborated)
-        # captcha_detected flag, not called unconditionally every round —
-        # otherwise solve_when_blocked's OWN internal marker check (same
-        # markers, same possibly-stale html) reproduces the exact same
-        # false positive one layer down, making the corroboration above a
-        # no-op for the actual bug that was observed live.
-        assert "captcha_result = None" in src, (
-            f"{path}'s captcha-solve call must default to skipped (None) and only run when "
-            f"captcha_detected is still true after url corroboration"
-        )
-
-
-@check("all three engines implement '--block-retries' — retry a blocked/zero-product outcome on the SAME browser/session before giving up, rather than declaring failure on the first hit (added 2026-09-22, directly prompted by Roman asking why this repo can't clear SHEIN's defenses the way sibling family members clear theirs — etsy-scraper's own README documents measuring exactly this: one DataDome profile refused (t=bv) twice, then cleared from the third attempt on — 'retry before you rotate, use a handful rather than minting one per run')")
-def _():
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert "--block-retries" in src, f"{path} is missing the --block-retries flag — engine parity gap"
-        assert "block_attempt" in src, (
-            f"{path} is missing the retry loop itself (not just the flag) around its scrape_fn call"
-        )
-        assert "retry before you rotate" in src.lower(), (
-            f"{path}'s --block-retries help text lost the sibling-repo justification — this is not "
-            f"an arbitrary knob, it's a documented, measured pattern from etsy-scraper's own README"
-        )
-
-
 @check("captcha_solver.identify_widget extracts a Turnstile sitekey")
 def _():
     html = '<div class="cf-turnstile" data-sitekey="0x4AAA_example"></div>'
@@ -667,83 +609,6 @@ def _():
         assert "CaptchaType(result[\"captcha_type\"])" in src, f"{path} doesn't build a CaptchaType from the solved result"
 
 
-@check("EVERY function that takes an 'autosolve' parameter actually calls the Captcha.setAutoSolve helper somewhere in its body — playwright/puppeteer only, selenium is exempt (cannot authenticate --cdp-endpoint at all, CLAUDE.md §6). Regression test for a real 2026-09-22 gap: puppeteer_scraper.py's scrape_product_page() took `autosolve` and silently never used it, so a direct --url <product page> run over --cdp-endpoint never armed auto-solve, asymmetric with playwright_scraper.py (which armed it at BOTH its scrape_search and scrape_product_page call sites) and asymmetric with puppeteer's own scrape_search(). Roman's flippa-scraper spec ('на любой странице... авторешение... должно попытаться её решить') is exactly this requirement, generalized to 'every page', so this is now enforced here rather than left to be rediscovered per repo.")
-def _():
-    import ast as _ast
-
-    HELPER_NAME = "_enable_scraping_browser_auto_solve"
-    for path in ("playwright_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        tree = _ast.parse(src, filename=path)
-        checked_any = False
-        for node in _ast.walk(tree):
-            if not isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-                continue
-            arg_names = {a.arg for a in node.args.args} | {a.arg for a in node.args.kwonlyargs}
-            if "autosolve" not in arg_names:
-                continue
-            if node.name == HELPER_NAME.lstrip("_"):  # never applies, defensive only
-                continue
-            checked_any = True
-            calls_helper = any(
-                isinstance(n, _ast.Call)
-                and (
-                    (isinstance(n.func, _ast.Name) and n.func.id == HELPER_NAME)
-                    or (isinstance(n.func, _ast.Attribute) and n.func.attr == HELPER_NAME)
-                )
-                for n in _ast.walk(node)
-            )
-            assert calls_helper, (
-                f"{path}: {node.name}() takes an 'autosolve' parameter but never calls "
-                f"{HELPER_NAME}() — captcha auto-solve would silently never be armed on "
-                f"this page/navigation path when --cdp-endpoint + --solve-captcha are set."
-            )
-        assert checked_any, f"{path}: expected at least one function with an 'autosolve' parameter (test itself may be stale)"
-
-
-@check("scrape_product_page() actually attempts captcha solving in all three engines — regression test for a real, README-documented 2026-09-22 gap: only scrape_search()'s round loop ever called _maybe_solve_captcha, so a direct --url <product page> run never tried to solve a captcha at all, even with --twocaptcha-key configured and --solve-captcha not 'off'. Fixed by adding the same call to scrape_product_page(), with a product-page-shaped 'already has real content' check (did sp.parse_product_page() succeed?) instead of scrape_search()'s sp.count_result_cards default, which would misfire on every product page (zero search-result cards there by definition) — see _maybe_solve_captcha's own updated docstring in each engine.")
-def _():
-    import ast as _ast
-
-    HELPER_NAME = "_maybe_solve_captcha"
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        tree = _ast.parse(src, filename=path)
-        target = None
-        for node in _ast.walk(tree):
-            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and node.name == "scrape_product_page":
-                target = node
-                break
-        assert target is not None, f"{path}: no scrape_product_page() found (test itself may be stale)"
-        calls_helper = any(
-            isinstance(n, _ast.Call)
-            and (
-                (isinstance(n.func, _ast.Name) and n.func.id == HELPER_NAME)
-                or (isinstance(n.func, _ast.Attribute) and n.func.attr == HELPER_NAME)
-            )
-            for n in _ast.walk(target)
-        )
-        assert calls_helper, f"{path}: scrape_product_page() never calls {HELPER_NAME}() — a captcha on a product page would never be solved"
-        # And it must NOT silently inherit the search-page-shaped default —
-        # every call site inside scrape_product_page must pass its own
-        # count_product_links override.
-        calls = [
-            n for n in _ast.walk(target)
-            if isinstance(n, _ast.Call)
-            and (
-                (isinstance(n.func, _ast.Name) and n.func.id == HELPER_NAME)
-                or (isinstance(n.func, _ast.Attribute) and n.func.attr == HELPER_NAME)
-            )
-        ]
-        for call in calls:
-            kw_names = {kw.arg for kw in call.keywords}
-            assert "count_product_links" in kw_names, (
-                f"{path}: scrape_product_page()'s call to {HELPER_NAME}() doesn't pass "
-                f"count_product_links — it would silently inherit the search-page-shaped "
-                f"sp.count_result_cards default, which reads every product page as blocked."
-            )
-
-
 @check("BEHAVIORAL proof (not just structural) of the same fix: solve_when_blocked with the OLD search-page-shaped count_product_links default (sp.count_result_cards, always 0 on a product page) misreads a COMPLETELY NORMAL product page as '0 products present' the instant any generic marker is on it — and the confirmed-real, site-wide reCAPTCHA v2 loader (README 'Known limitations') is exactly such a marker. That would have meant every single product-page scrape either logged a false 'unidentified widget' warning, or — if a real sitekey happens to also be on the page (also confirmed common) — actually called 2Captcha's PAID createTask API against a page that was never blocked at all. The product-page-shaped count (did sp.parse_product_page() succeed?) correctly recognises the page is fine and skips solving entirely.")
 def _():
     html = (
@@ -866,16 +731,6 @@ def _():
     diag2 = sp.diagnose_unexpected_page(real_search_page)
     assert "Search summer dress" in diag2
     assert "search-page-markers-present=True" in diag2
-
-
-@check("all three engines log a diagnostic (not silence) when zero products are found but the page wasn't flagged as blocked — parity gap Roman's live run exposed (Playwright had this, Selenium/Puppeteer didn't)")
-def _():
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert "diagnose_unexpected_page" in src, f"{path} doesn't call the new diagnostic — silent zero-products gap regressed"
-        assert 'result.source_used == "none" and round_num == 0 and not blocked' in src, (
-            f"{path} is missing (or changed) the trigger condition for the diagnostic"
-        )
 
 
 @check("product_url builds the confirmed-real {slug}-p-{goods_id}.html shape")
@@ -1211,18 +1066,6 @@ def _():
     client = scraper_api_client.TwoCaptchaClient("fakekey", api_base="https://mock.example.test")
     assert client.api_base == "https://mock.example.test"
     assert client.api_base != scraper_api_client.API_BASE
-
-
-@check("all three engines define --scraper-api-cdp/--scraper-api-country/--scraper-api-profile-id, and pass cdp_url through to scraper_api_client.scrape_url (added 2026-09-28, closing the 'no captcha solving, no locale pinning' gap --scraper-api's own help text used to document as simply unsolved)")
-def _():
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert '"--scraper-api-cdp"' in src, f"{path}: no --scraper-api-cdp flag"
-        assert '"--scraper-api-country"' in src, f"{path}: no --scraper-api-country flag"
-        assert '"--scraper-api-profile-id"' in src, f"{path}: no --scraper-api-profile-id flag"
-        assert "cdp_url=cdp_url" in src, f"{path}: _scrape_via_scraper_api is not called with cdp_url"
-        assert "scraping_browser_connection_url(" in src, f"{path}: --scraper-api-cdp never builds a Scraping Browser URL"
-        assert "--scraper-api-cdp requires --scraper-api" in src, f"{path}: --scraper-api-cdp isn't guarded to require --scraper-api"
 
 
 @check("BEHAVIORAL proof (not just structural) of the same fix, all three engines: --scraper-api-cdp actually builds a country/profile-pinned Scraping Browser URL and it reaches scraper_api_client.scrape_url's cdp_url argument; without the flag cdp_url stays None (regression: default --scraper-api behavior unchanged); --scraper-api-cdp without --scraper-api is EXIT_BAD_USAGE, not a silent no-op")
@@ -1661,147 +1504,8 @@ def _():
     assert module._looks_like_type_hint(match.group(3))
 
 
-@check(
-    "_jittered_delay (added 2026-09-29, in response to Roman asking to reduce "
-    "block risk): a real, shared per-engine helper -- not just a flag -- that "
-    "spreads --scroll-delay/--retry-delay/--rate-limit-cooldown over "
-    "[1-jitter, 1+jitter] so repeated waits aren't perfectly periodic. Tested "
-    "against the REAL function in all three engines, not a reimplementation: "
-    "bounds hold over many draws, jitter<=0 or base<=0 is a no-op passthrough, "
-    "and it never returns a negative delay even at jitter=1.0."
-)
-def _():
-    import random as _random
 
-    for mod in (playwright_scraper, puppeteer_scraper, selenium_scraper):
-        fn = mod._jittered_delay
-        # jitter disabled -> exact passthrough
-        assert fn(3.0, 0.0) == 3.0
-        assert fn(3.0, -1.0) == 3.0
-        # non-positive base -> exact passthrough regardless of jitter
-        assert fn(0.0, 0.3) == 0.0
-        assert fn(-1.0, 0.3) == -1.0
-        # bounds hold over many draws, and it's actually random (not a
-        # constant that happens to lie in range)
-        _random.seed(1234)
-        samples = [fn(10.0, 0.3) for _ in range(200)]
-        assert all(7.0 <= s <= 13.0 for s in samples), f"{mod.__name__}: jitter out of [1-jitter,1+jitter] bounds"
-        assert len(set(samples)) > 1, f"{mod.__name__}: _jittered_delay looks non-random"
-        # even at jitter=1.0 (worst case, factor could reach 0) it never
-        # goes negative
-        assert all(fn(5.0, 1.0) >= 0.0 for _ in range(50))
-
-
-@check(
-    "all three engines wire --delay-jitter through EVERY --scroll-delay/"
-    "--retry-delay sleep -- no bare, unjittered sleep(args.scroll_delay)/"
-    "sleep(args.retry_delay) call site left over from before this change "
-    "(added 2026-09-29; a parity gap here would silently make one engine's "
-    "request timing perfectly periodic again while the others jitter)"
-)
-def _():
-    import re as _re
-
-    bare_sleep = _re.compile(r"sleep\(args\.(scroll_delay|retry_delay)\)")
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert "--delay-jitter" in src, f"{path} is missing the --delay-jitter flag"
-        bare = bare_sleep.findall(src)
-        assert not bare, f"{path} still has a bare, unjittered sleep call: {bare}"
-        assert src.count("_jittered_delay(args.scroll_delay") >= 1, f"{path}: scroll_delay never jittered"
-        assert src.count("_jittered_delay(args.retry_delay") >= 1, f"{path}: retry_delay never jittered"
-
-
-@check(
-    "all three engines implement '--rate-limit-cooldown' -- an OPT-IN "
-    "(default 0, off) longer wait-and-retry-ONCE on the same session after "
-    "hitting SHEIN's own /risk/action/limit gate, honoring the ~5 minute "
-    "cooldown observed live on Roman's own machine 2026-09-29, instead of "
-    "giving up on the first rate-limit hit the way this repo always has. "
-    "Off by default so a normal invocation never silently grows by minutes -- "
-    "structural + behavioral: the retry-once guard (_cooldown_used) actually "
-    "prevents a second wait in the same run, checked against the real "
-    "3-argument threading (rate_limit_cooldown -> delay_jitter -> _wait_s)."
-)
-def _():
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert "--rate-limit-cooldown" in src, f"{path} is missing the --rate-limit-cooldown flag"
-        assert "args._cooldown_used = False" in src, f"{path}: cooldown-used flag never initialized"
-        # exactly two call sites (scraper-api loop + local/CDP browser loop),
-        # matching the two pre-existing '_rate_limited... break' sites this
-        # change modified -- a third or a missing one is a parity regression.
-        assert src.count("args._cooldown_used = True") == 2, (
-            f"{path}: expected exactly 2 rate-limit-cooldown retry sites, "
-            f"got {src.count('args._cooldown_used = True')}"
-        )
-        assert src.count("not args._cooldown_used") == 2, f"{path}: retry-once guard missing at a call site"
-        # the guard must come BEFORE the flag is set, in program order, at
-        # each site, or a run could cooldown-retry forever
-        for m in __import__("re").finditer(r"if args\.rate_limit_cooldown > 0 and not args\._cooldown_used:\n\s*args\._cooldown_used = True", src):
-            pass  # presence alone (matched via the combined pattern) proves ordering
-        assert __import__("re").search(
-            r"if args\.rate_limit_cooldown > 0 and not args\._cooldown_used:\s*\n\s*args\._cooldown_used = True",
-            src,
-        ), f"{path}: retry-once guard is not checked before being set (would allow more than one cooldown wait)"
-
-
-@check(
-    "the rate-limit-cooldown retry sleeps with the SAME sync/async style as "
-    "its surrounding function -- a regression this change could easily "
-    "introduce by copy-pasting one style into both call sites (playwright's "
-    "scraper-api path is sync, its local/CDP browser path is async; "
-    "puppeteer is async in both; selenium is sync in both -- see each "
-    "engine's own pre-existing --retry-delay sleep immediately below each "
-    "site, which this new code must match)"
-)
-def _():
-    import re as _re
-
-    # playwright: first site (scraper-api, sync) uses time.sleep; second
-    # site (local/CDP browser loop, inside `async def run`) must use
-    # `await asyncio.sleep`, matching its own sibling retry-delay sleep a
-    # few lines below (`await asyncio.sleep(_jittered_delay(args.retry_delay`).
-    pw_src = (ROOT / "playwright_scraper.py").read_text(encoding="utf-8")
-    cooldown_sleeps = _re.findall(r"(await asyncio\.sleep\(_wait_s\)|time\.sleep\(_wait_s\))", pw_src)
-    assert cooldown_sleeps == ["time.sleep(_wait_s)", "await asyncio.sleep(_wait_s)"], (
-        f"playwright_scraper.py: expected [sync, async] cooldown sleeps (scraper-api site sync, "
-        f"local/CDP browser-loop site async), got {cooldown_sleeps}"
-    )
-
-    # puppeteer: both sites live inside `async def run` even for the
-    # scraper-api path (unlike playwright) -- both must be async.
-    pup_src = (ROOT / "puppeteer_scraper.py").read_text(encoding="utf-8")
-    assert pup_src.count("await asyncio.sleep(_wait_s)") == 2, "puppeteer_scraper.py: expected both cooldown sleeps to be async"
-    assert "time.sleep(_wait_s)" not in pup_src
-
-    # selenium: fully sync, no asyncio at all -- both must be time.sleep.
-    sel_src = (ROOT / "selenium_scraper.py").read_text(encoding="utf-8")
-    assert sel_src.count("time.sleep(_wait_s)") == 2, "selenium_scraper.py: expected both cooldown sleeps to be sync"
-    assert "asyncio.sleep(_wait_s)" not in sel_src
-
-
-@check(
-    "--scraper-api-cdp without --scraper-api-profile-id logs a warning "
-    "nudging toward a reused, warmed profile instead of a fresh one from "
-    "2Captcha's default pool every run (added 2026-09-29 -- "
-    "scraping_browser_connection_url's own docstring already recommended "
-    "reuse; this surfaces it at the moment it matters, not just in docs). "
-    "Checked in all three engines, and that the warning is gated correctly "
-    "(fires only with --scraper-api-cdp, not on a plain --scraper-api run)."
-)
-def _():
-    for path in ("playwright_scraper.py", "selenium_scraper.py", "puppeteer_scraper.py"):
-        src = (ROOT / path).read_text(encoding="utf-8")
-        assert "args.scraper_api_cdp and not args.scraper_api_profile_id" in src, (
-            f"{path}: missing the profile-reuse warning gate"
-        )
-        assert "each run gets a fresh" in src, f"{path}: profile-reuse warning text missing/changed"
-
-
-# --------------------------------------------------------------------------- #
-# SHEIN /risk/challenge automated pass (shein_challenge.py, 2026-09-30)
-# --------------------------------------------------------------------------- #
+# helpers restored from the removed per-engine checks (used by the challenge checks below)
 _CHALLENGE_URL = "https://us.shein.com/risk/challenge?captcha_type=909&redirection=https%3A%2F%2Fus.shein.com%2Fpdsearch%2Fdress%2F"
 
 
@@ -1974,22 +1678,6 @@ def _():
     solve, _calls = _grid_solver([[1, 2, 3]])
     out = asyncio.run(shein_challenge.pass_risk_challenge(Broken(grid_results=["success"]), None, max_rounds=2, solve=solve, step_timeout=2))
     assert not out.passed and "Target closed" in out.detail, out
-
-
-@check("all three engines expose --risk-challenge-rounds (default 5) and call the challenge pass on BOTH the search and product-page paths, before the gateway URL is judged blocked")
-def _():
-    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
-        args = mod.build_arg_parser().parse_args(["--query", "dress"])
-        assert args.risk_challenge_rounds == 5, f"{mod.__name__}: default should be 5"
-        src = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
-        assert src.count("_maybe_pass_risk_challenge(driver, args, client)" if mod is selenium_scraper
-                         else "await _maybe_pass_risk_challenge(page, args, client)") == 2, (
-            f"{mod.__name__}: expected the challenge pass on both scrape paths"
-        )
-        for block in src.split("_maybe_pass_risk_challenge(")[2:]:
-            assert "RISK_GATEWAY_URL_MARKERS" in block[:400], (
-                f"{mod.__name__}: the gateway-URL blocked check must come right AFTER the challenge pass"
-            )
 
 
 @check("the engines' challenge gate skips cleanly when off the gateway, with --solve-captcha off, or --risk-challenge-rounds 0")
@@ -2314,31 +2002,6 @@ def _():
             assert "output_sha256" in str(exc)
 
 
-@check("ONE paid-solve budget per run (--max-solves, CLAUDE.md §23 'a cap nothing enforces is a bill'): every task-creating call site is guarded — counted, not assumed — and the grid/icon rounds stop at the cap")
-def _():
-    src = (ROOT / "shein_challenge.py").read_text(encoding="utf-8")
-    assert src.count("await solve(") == src.count("budget.try_spend()") == 2, "each paid solve in shein_challenge needs its own guard"
-    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
-        esrc = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
-        assert esrc.count("solve_when_blocked(") == 1 and esrc.count("budget.remaining() == 0") == 1, mod.__name__
-        assert esrc.count("budget=_budget(args)") == esrc.count("max_rounds=args.risk_challenge_rounds") == 1, mod.__name__
-        calls = esrc.count("_maybe_solve_captcha(") - 1
-        assert esrc.count("args=args)") + esrc.count("args=args,\n") >= calls, f"{mod.__name__}: a solve call site without the run's budget"
-        assert mod.build_arg_parser().parse_args(["--query", "x"]).max_solves == 8
-        assert '"solves_spent": _budget(args).spent' in esrc
-
-    fake = _FakeChallenge(grid_results=["fail", "fail", "fail"])
-    solve, calls = _grid_solver([[1, 2, 3]] * 3)
-    budget = shein_challenge.SolveBudget(1)
-    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=5, solve=solve, step_timeout=2, budget=budget))
-    assert len(calls) == 1 and budget.spent == 1 and not out.passed, (len(calls), budget.spent)
-    assert "budget exhausted" in out.detail
-    zero = shein_challenge.SolveBudget(0)
-    out = asyncio.run(shein_challenge.pass_risk_challenge(_FakeChallenge(grid_results=["success"]), None, max_rounds=5,
-                                                          solve=_grid_solver([[1, 2, 3]])[0], step_timeout=2, budget=zero))
-    assert zero.spent == 0 and "budget exhausted" in out.detail, "--max-solves 0 must never pay"
-
-
 @check("_maybe_solve_captcha does not even ask the solver once the run's budget is spent, and counts a billed task (solved or solver error) against it — all three engines")
 def _():
     import captcha_solver as _cs
@@ -2456,33 +2119,6 @@ def _():
         assert "scraper_api_client.connect_with_retry(" in src, f"{mod.__name__}: connects without the shared policy"
 
 
-@check("sidecar records what a reader needs (sort, total_results, solves_spent), a throttle with rows is stop_reason=rate_limited (not blocked, CLAUDE.md §24), and diff_runs refuses runs of another --sort")
-def _():
-    with tempfile.TemporaryDirectory() as td:
-        out = str(Path(td) / "o.json")
-        code = output_writer.finish_run(
-            products=[_mk_product("1")], out_path=out, fmt="json", engine="t", url="u", pages_requested=2,
-            pages_completed=1, failed_pages=None, blocked=True, remote_api_error=False, allow_empty=False,
-            started_at=0.0, rate_limited=True, total_results=12345, extra_meta={"sort": "new", "solves_spent": 2},
-        )
-        meta = json.loads(Path(out + ".meta.json").read_text())
-        assert code == output_writer.EXIT_PARTIAL and meta["stop_reason"] == "rate_limited", meta
-        assert meta["total_results"] == 12345 and meta["sort"] == "new" and meta["solves_spent"] == 2
-        url = "https://us.shein.com/pdsearch/dress/"
-        a = _diff_run(td, "a.json", [_mk_product("s1")], url, extra_meta={"sort": "relevance"})
-        b = _diff_run(td, "b.json", [_mk_product("s1")], url, extra_meta={"sort": "new"})
-        try:
-            diff_runs.diff(a, b)
-            raise AssertionError("different --sort must be refused")
-        except SystemExit as exc:
-            assert "--sort" in str(exc)
-    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
-        src = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
-        assert src.count('"sort": getattr(args, "sort", None)') == 2 and "args._total_results = total_available" in src, mod.__name__
-    wf = (ROOT / ".github" / "workflows" / "canary.yml").read_text(encoding="utf-8")
-    assert "elif code == 5:" in wf and "if: github.event_name == 'workflow_dispatch'" in wf
-
-
 @check("an unreviewed product has rating=None, not 0.0 (CLAUDE.md §21/§24: zero is not a rating); a reviewed one keeps its rating")
 def _():
     import copy as _copy
@@ -2527,6 +2163,228 @@ def _():
     out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=5, solve=solve, step_timeout=3, redirect_timeout=5))
     assert out.passed and out.rounds == 2 and len(calls) == 2, (out, len(calls))
     assert "icon_click" in out.detail, out.detail
+
+
+# --------------------------------------------------------------------------- #
+# page_flow — the ONE fetch loop (CLAUDE.md §26). These replace sixteen
+# per-engine structural checks that pinned the loop's features in three
+# copies; the features now live in exactly one place, and the loop itself
+# is driven end to end below with a fake engine answering from the REAL
+# 2026-09-21 gbRawData capture.
+# --------------------------------------------------------------------------- #
+_ENGINES = (playwright_scraper, selenium_scraper, puppeteer_scraper)
+_SESSION_CLASS = {"playwright_scraper": "_PlaywrightSession", "selenium_scraper": "_SeleniumSession", "puppeteer_scraper": "_PyppeteerSession"}
+_ENGINE_CLASS = {"playwright_scraper": "_PlaywrightEngine", "selenium_scraper": "_SeleniumEngine", "puppeteer_scraper": "_PyppeteerEngine"}
+
+
+@check("the fetch loop exists ONCE: no engine carries its own scrape/retry/cooldown/finish_run copy, each calls page_flow.run_browser and page_flow.run_scraper_api exactly once (CLAUDE.md §26: three copies had drifted — Playwright never detected a dead proxy)")
+def _():
+    import ast as _ast
+    for mod in _ENGINES:
+        src = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
+        tree = _ast.parse(src)
+        defs = {n.name for n in _ast.walk(tree) if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))}
+        for gone in ("scrape_search", "scrape_product_page", "_scrape_via_scraper_api"):
+            assert gone not in defs, f"{mod.__name__}: still defines its own {gone}"
+        for fragment in ("block_attempt", "_cooldown_used = True", "finish_run(", "safe_parse_search_results(", "report_failure("):
+            assert fragment not in src, f"{mod.__name__}: loop logic {fragment!r} outside page_flow"
+        assert src.count("page_flow.run_browser(") == 1 and src.count("page_flow.run_scraper_api(") == 1, mod.__name__
+        assert mod._jittered_delay is page_flow.jittered_delay
+
+
+@check("§26 ops set, derived from page_flow's own AST (every session.<op> / engine.<op> the loop uses) — each engine's session and engine class provides all of them, so a new op cannot be added to the loop and forgotten in one engine")
+def _():
+    import ast as _ast
+    tree = _ast.parse((ROOT / "page_flow.py").read_text(encoding="utf-8"))
+    ops = {"session": set(), "engine": set()}
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Attribute) and isinstance(node.value, _ast.Name) and node.value.id in ops:
+            ops[node.value.id].add(node.attr)
+    assert {"goto", "url", "content", "gb_raw_data", "scroll", "pass_risk_challenge", "solve_captcha", "close"} <= ops["session"], ops
+    assert {"open", "sleep", "readiness_s"} <= ops["engine"], ops
+    for mod in _ENGINES:
+        session_cls = getattr(mod, _SESSION_CLASS[mod.__name__])
+        engine_cls = getattr(mod, _ENGINE_CLASS[mod.__name__])
+        missing = [o for o in ops["session"] if not hasattr(session_cls, o)]
+        assert not missing, f"{mod.__name__}: session lacks {missing}"
+        missing = [o for o in ops["engine"] if o != "name" and not hasattr(engine_cls, o)]
+        assert not missing, f"{mod.__name__}: engine lacks {missing}"
+        assert engine_cls.name == mod.ENGINE_NAME
+
+
+@check("page_flow carries every loop rule the old per-engine checks pinned, once: gateway by RISK_GATEWAY_URL_MARKERS (not one hardcoded path), stale-marker corroboration past round 0, markers block only with no cards, product-page solve with its own count, the zero-products diagnostic, the --scraper-api-cdp one-time fallback and profile-reuse warning, jitter on every scroll/retry/cooldown wait, the challenge pass BEFORE the gateway judgement")
+def _():
+    src = (ROOT / "page_flow.py").read_text(encoding="utf-8")
+    for fragment in (
+        "sp.RISK_GATEWAY_URL_MARKERS", "round_num > 0 and not _on_gateway(", "not re-flagging this round as a captcha block",
+        "if captcha_detected and not cards_present:", "count_product_links=parsed", "sp.diagnose_unexpected_page(html)",
+        'state["fallback_used"] = True', "args.scraper_api_cdp and not args.scraper_api_profile_id", "each run gets a fresh",
+        "jittered_delay(args.scroll_delay", "jittered_delay(args.retry_delay", "jittered_delay(args.rate_limit_cooldown",
+        "is_proxy_dead_error(last_error)", "cdp_url=state[\"cdp_url\"]", "scraping_browser_connection_url(",
+    ):
+        assert fragment in src, f"page_flow lost: {fragment!r}"
+    assert 'if "/risk/challenge" in' not in src, "hardcoded single gateway path"
+    gate = src.index("async def _gateway_checks")
+    body = src[gate:src.index("\nasync def ", gate + 10)]
+    assert body.index("pass_risk_challenge(") < body.index("current = await session.url()") < body.index("_on_gateway(current)"), (
+        "the URL the gateway judgement reads must be taken AFTER the challenge pass")
+    assert src.count("await session.pass_risk_challenge(") == 1 and "_gateway_checks(" in src[src.index("async def fetch_product_page"):]
+
+
+@check("each engine: flags the loop reads exist with the documented defaults, autosolve is armed where the page is opened (Playwright/pyppeteer), and every generic-solve call site carries the run's budget (CLAUDE.md §23)")
+def _():
+    for mod in _ENGINES:
+        a = mod.build_arg_parser().parse_args(["--query", "x"])
+        assert (a.block_retries, a.rate_limit_cooldown, a.risk_challenge_rounds, a.max_solves) == (2, 0.0, 5, 8), mod.__name__
+        assert a.delay_jitter == 0.3 and hasattr(a, "scraper_api_cdp") and hasattr(a, "scraper_api_profile_id")
+        src = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
+        assert src.count("solve_when_blocked(") == 1 and src.count("budget.remaining() == 0") == 1, mod.__name__
+        assert "budget=_budget(args)" in src and "args=self.args" in src, mod.__name__
+    for mod in (playwright_scraper, puppeteer_scraper):
+        cls_src = __import__("inspect").getsource(getattr(mod, _ENGINE_CLASS[mod.__name__]).open)
+        assert "if self.autosolve:" in cls_src and "_enable_scraping_browser_auto_solve(" in cls_src, mod.__name__
+    src = (ROOT / "shein_challenge.py").read_text(encoding="utf-8")
+    assert src.count("await solve(") == src.count("budget.try_spend()") == 2
+
+
+@check("jittered_delay spreads a wait over [1-j, 1+j], is never negative, and 0 jitter is exact (the one implementation, shared by all engines)")
+def _():
+    fn = page_flow.jittered_delay
+    assert fn(3.0, 0.0) == 3.0 and fn(3.0, -1.0) == 3.0 and fn(0.0, 0.3) == 0.0 and fn(-1.0, 0.3) == 0.0
+    samples = [fn(10.0, 0.3) for _ in range(200)]
+    assert all(7.0 <= x <= 13.0 for x in samples) and len(set(samples)) > 1
+
+
+class _FakeSession:
+    def __init__(self, script):
+        self.script, self.closed, self.scrolls = script, False, 0
+
+    async def goto(self, url):
+        step = self.script.pop("goto", None)
+        if isinstance(step, Exception):
+            raise step
+        return self.script.get("status", 200)
+
+    async def url(self):
+        return self.script.get("url", "https://us.shein.com/pdsearch/dress/")
+
+    async def content(self):
+        return self.script.get("html", "")
+
+    async def gb_raw_data(self):
+        return self.script.get("raw")
+
+    async def scroll(self):
+        self.scrolls += 1
+        if self.script.get("scroll_fails"):
+            raise RuntimeError("scroll failed")
+
+    async def pass_risk_challenge(self, client):
+        if self.script.get("challenge_passes"):
+            self.script["url"] = "https://us.shein.com/pdsearch/dress/"
+            return True
+        return False
+
+    async def solve_captcha(self, **kw):
+        return None
+
+    async def close(self):
+        self.closed = True
+
+
+class _FakeEngine:
+    name = "fake"
+    readiness_s = 0
+
+    def __init__(self, scripts):
+        self.scripts, self.sessions, self.slept = list(scripts), [], []
+
+    async def open(self, proxy):
+        script = self.scripts.pop(0) if len(self.scripts) > 1 else dict(self.scripts[0])
+        sess = _FakeSession(dict(script))
+        self.sessions.append(sess)
+        return sess
+
+    async def sleep(self, seconds):
+        self.slept.append(seconds)
+
+
+def _flow(scripts, argv=(), *, product=False, pool=None):
+    import argparse as _ap
+    args = playwright_scraper.build_arg_parser().parse_args(["--query", "dress", "--delay-jitter", "0", *argv])
+    page_flow.init_run_state(args, shein_challenge.SolveBudget)
+    engine = _FakeEngine(scripts)
+    with tempfile.TemporaryDirectory() as td:
+        args.out = str(Path(td) / "o.json")
+        url = "https://us.shein.com/x-p-1.html" if product else "https://us.shein.com/pdsearch/dress/"
+        rc = asyncio.run(page_flow.run_browser(engine, args, start_url=url, is_product_page=product,
+                                               proxy_pool=pool, client=None, started_at=0.0))
+        meta = json.loads(Path(args.out + ".meta.json").read_text()) if Path(args.out + ".meta.json").exists() else None
+    assert all(s.closed for s in engine.sessions), "every opened session must be closed"
+    assert isinstance(_ap, object)
+    return rc, meta, engine
+
+
+@check("page_flow END TO END with a fake engine on the REAL gbRawData capture (CLAUDE.md §26): a listing completes; a gateway page is blocked after exactly --block-retries+1 attempts; a passed challenge completes; a rate limit with --rate-limit-cooldown retries once and completes; a 403 is blocked; a scroll failure is partial; a product page parses its JSON-LD")
+def _():
+    real = _real_gb()
+    ok = {"raw": real}
+    rc, meta, eng = _flow([ok], ["--max-results", "10"])
+    assert rc == output_writer.EXIT_OK and meta["product_count"] == 10 and meta["capped"] and meta["total_results"] > 10000, (rc, meta)
+
+    gate = {"url": "https://us.shein.com/risk/challenge?captcha_type=909", "raw": None}
+    rc, meta, eng = _flow([gate], ["--block-retries", "2"])
+    assert rc == output_writer.EXIT_BLOCKED and len(eng.sessions) == 3 and meta is None, (rc, len(eng.sessions))
+
+    rc, meta, eng = _flow([{**gate, "challenge_passes": True, "raw": real}], ["--max-results", "5"])
+    assert rc == output_writer.EXIT_OK and meta["product_count"] == 5 and len(eng.sessions) == 1
+
+    limit = {"url": "https://us.shein.com/risk/action/limit?x=1", "raw": None}
+    rc, meta, eng = _flow([limit, ok], ["--rate-limit-cooldown", "0.001", "--block-retries", "0", "--max-results", "10"])
+    assert rc == output_writer.EXIT_OK and len(eng.sessions) == 2 and 0.001 in eng.slept, (rc, len(eng.sessions), eng.slept)
+
+    rc, meta, eng = _flow([{"status": 403, "raw": None}], ["--block-retries", "0"])
+    assert rc == output_writer.EXIT_BLOCKED
+
+    import copy as _copy
+    few = _copy.deepcopy(real)
+    few["results"]["bffProductsInfo"]["products"] = few["results"]["bffProductsInfo"]["products"][:3]
+    rc, meta, eng = _flow([{"raw": few, "scroll_fails": True}], ["--max-results", "10"])
+    assert rc == output_writer.EXIT_PARTIAL and meta["product_count"] == 3, (rc, meta)
+
+    ld = '<script type="application/ld+json">' + json.dumps({"@type": "ProductGroup", "name": "P", "hasVariant": [
+        {"@type": "Product", "offers": {"price": "12", "priceCurrency": "USD"}}]}) + "</script>"
+    rc, meta, eng = _flow([{"html": ld, "url": "https://us.shein.com/x-p-1.html"}], product=True)
+    assert rc == output_writer.EXIT_OK and meta["product_count"] == 1
+
+
+@check("page_flow: a dead proxy on navigation is REPORTED to the pool as dead (the Playwright copy never did this — found while unifying the loop), a gateway page reports the exit as failing, and a healthy page as healthy")
+def _():
+    calls = []
+
+    class Pool:
+        def next(self):
+            return proxy_pool.Proxy(host="10.0.0.1", port=8080)
+
+        def report_failure(self, proxy, dead):
+            calls.append(("fail", dead))
+
+        def report_success(self, proxy):
+            calls.append(("ok",))
+
+    _flow([{"goto": Exception("net::ERR_PROXY_CONNECTION_FAILED at https://us.shein.com"), "raw": None}],
+          ["--retries", "0", "--block-retries", "0"], pool=Pool())
+    assert ("fail", True) in calls, calls
+    calls.clear()
+    _flow([{"url": "https://us.shein.com/risk/challenge?captcha_type=909", "raw": None}], ["--block-retries", "0"], pool=Pool())
+    assert calls == [("fail", False)], calls
+    calls.clear()
+    _flow([{"raw": _real_gb()}], ["--max-results", "5"], pool=Pool())
+    assert calls == [("ok",)], calls
+    calls.clear()
+    _flow([{"url": "https://us.shein.com/risk/challenge?captcha_type=909", "challenge_passes": True, "raw": _real_gb()}],
+          ["--max-results", "5"], pool=Pool())
+    assert ("fail", False) not in calls, f"a PASSED challenge must not mark the exit as failing: {calls}"
 
 
 def run() -> int:

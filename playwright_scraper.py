@@ -40,7 +40,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 try:
     from playwright.async_api import Browser, BrowserContext, Page, async_playwright
@@ -53,13 +53,14 @@ else:
 
 import env_config
 import scraper_api_client
+import page_flow
 import shein_challenge
 import shein_parser as sp
-from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
+from captcha_solver import CaptchaType, build_injection_script, solve_when_blocked
 from fingerprint_client import fetch_fingerprint, refuse_if_cdp, user_agent_from
-from output_writer import EXIT_BAD_USAGE, EXIT_CRASH, EXIT_REMOTE_API_ERROR, Product, finish_run, sku_key as _sku_key
-from proxy_pool import Proxy, ProxyPool, ProxyParseError, is_proxy_dead_error, load_proxies, redact_credentials
-from scraper_api_client import TwoCaptchaAuthError, TwoCaptchaClient, TwoCaptchaError
+from output_writer import EXIT_BAD_USAGE, EXIT_CRASH
+from proxy_pool import Proxy, ProxyPool, ProxyParseError, load_proxies, redact_credentials
+from scraper_api_client import TwoCaptchaClient
 
 ENGINE_NAME = "playwright"
 
@@ -104,15 +105,8 @@ def _budget(args) -> "shein_challenge.SolveBudget":
     return args._solve_budget
 
 
-def _jittered_delay(base_seconds: float, jitter: float) -> float:
-    """Multiply base_seconds by a random factor in [1-jitter, 1+jitter] so
-    repeated waits (scroll pauses, retry backoff, a rate-limit cooldown)
-    aren't perfectly periodic — an easy signal for a site's own rate/
-    bot-detection heuristics to key off of. jitter<=0 disables this (e.g.
-    for reproducible tests); never returns a negative delay."""
-    if base_seconds <= 0 or jitter <= 0:
-        return base_seconds
-    return max(0.0, base_seconds * random.uniform(1 - jitter, 1 + jitter))
+_jittered_delay = page_flow.jittered_delay  # kept for callers and tests; the one implementation is page_flow's
+
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -437,369 +431,74 @@ async def _connect_over_cdp(pw, cdp_endpoint: str):
     )
 
 
-async def _read_gb_raw_data(page: Page) -> Optional[dict]:
-    """Live JS read, the confirmed-real, most robust source (see
-    shein_parser.py) — never lets a JS-side error crash the run."""
-    try:
-        return await page.evaluate("() => window.gbRawData || null")
-    except Exception as exc:  # noqa: BLE001 — falls back to HTML-text extraction, never fatal
-        log.debug("page.evaluate('window.gbRawData') failed, will fall back to HTML extraction: %s", exc)
-        return None
+class _PlaywrightSession:
+    """page_flow.PageSession over one Playwright page (CLAUDE.md §26: the
+    loop is shared, only these named operations are Playwright's)."""
 
+    def __init__(self, page: Page, context: BrowserContext, *, reuse_default: bool, args: argparse.Namespace):
+        self.page, self.context, self.reuse_default, self.args = page, context, reuse_default, args
 
-async def scrape_search(
-    *, args: argparse.Namespace, start_url: str, browser: Browser,
-    proxy_pool: Optional[ProxyPool], client: Optional[TwoCaptchaClient],
-    autosolve: bool, user_agent: Optional[str],
-) -> tuple:
-    """Returns (products, blocked, remote_api_error, scroll_rounds_done, scroll_error)
-    — same contract as every sibling engine's own scrape_search()/
-    scrape_urls()."""
-    blocked = False
-    remote_api_error = False
-    scroll_error = False
+    async def goto(self, url: str) -> Optional[int]:
+        response = await self.page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+        await self.page.wait_for_timeout(READINESS_WAIT_MS)
+        return response.status if response is not None else None
 
-    proxy = proxy_pool.next() if proxy_pool else None
-    log.info("Using proxy %s", proxy.masked() if proxy else "(no local proxy pool — direct connection, or a --cdp-endpoint session providing its own exit)")
-    reuse_default = bool(args.cdp_endpoint)
-    context = await _new_context(browser, proxy, user_agent, reuse_default=reuse_default)
-    page = await context.new_page()
-    if autosolve:
-        await _enable_scraping_browser_auto_solve(context, page)
+    async def url(self) -> str:
+        return self.page.url
 
-    last_error = None
-    status = None
-    for attempt in range(args.retries + 1):
+    async def content(self) -> str:
+        return await self.page.content()
+
+    async def gb_raw_data(self) -> Optional[dict]:
+        """Live JS read — the confirmed-real, most robust source (see
+        shein_parser.py); a JS-side error falls back to HTML extraction."""
         try:
-            response = await page.goto(start_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
-            await page.wait_for_timeout(READINESS_WAIT_MS)
-            status = response.status if response is not None else None
-            last_error = None
-            break
-        except Exception as exc:  # noqa: BLE001 — every remote call must be bounded and reported
-            last_error = str(exc)
-            log.warning("Navigation attempt %d/%d failed: %s", attempt + 1, args.retries + 1, last_error)
-            if attempt < args.retries:
-                await asyncio.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
-
-    if last_error is not None:
-        await _close_scrape_page(page, context, reuse_default=reuse_default)
-        log.error("Search page permanently failed to load: %s", last_error)
-        return [], False, True, 0, False
-
-    # REAL, confirmed-live incidents (see shein_parser.py's module
-    # docstring — TWO distinct endpoints now, a captcha-shaped
-    # `/risk/challenge` and a rate-limit `/risk/action/limit`, the
-    # latter confirmed via this exact engine, not a browser-rendering
-    # tool): both silently redirect a request they don't like, rather
-    # than returning a >=400 status — the final page.url is the single
-    # most reliable signal for either, cheaper and more direct than
-    # scanning HTML content (though sp.BOT_CHALLENGE_MARKERS below also
-    # matches, since the redirect target is embedded as text in the
-    # page's own SSR JSON state).
-    if "/risk/action/limit" in page.url:
-        args._rate_limited = True
-    if await _maybe_pass_risk_challenge(page, args, client):
-        status = None
-    if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
-        log.warning("Redirected to SHEIN's own risk gateway (%s) — treating as blocked.", page.url)
-        blocked = True
-        if proxy_pool is not None and proxy is not None:
-            proxy_pool.report_failure(proxy, dead=False)
-
-    if status is not None and status >= 400:
-        log.warning("Search page returned HTTP %d — treating as blocked, not empty.", status)
-        blocked = True
-        if proxy_pool is not None and proxy is not None and status in (403, 429):
-            proxy_pool.report_failure(proxy, dead=True)
-    elif status is not None and proxy_pool is not None and proxy is not None:
-        proxy_pool.report_success(proxy)
-
-    seen_skus: set = set()
-    merged: List[Product] = []
-    stall = 0
-    previous_product_count = -1
-    rounds = 0
-
-    for round_num in range(args.max_scrolls + 1):
-        rounds = round_num
-        if args._rate_limited:
-            break
-        html = await page.content()
-        raw_data = await _read_gb_raw_data(page)
-        cards_present = sp.count_result_cards(html) > 0
-        # SHEIN's /risk/challenge SSR state embeds its OWN redirect URL as
-        # text (see the comment above the initial page.url check above) —
-        # but a REAL, live capture (Roman, 2026-09-22, captcha_type=909)
-        # showed that text can persist on a page the browser has already
-        # moved PAST the gateway to: a plain homepage, zero captcha
-        # widgets, zero challenge iframes, `window.gbRawData` present but
-        # not search data — see shein_parser.py's module docstring. A bare
-        # substring match on `html` alone can't tell "still gated" apart
-        # from "was gated a few seconds ago, then redirected somewhere
-        # unrelated". `page.url` can, since it reflects the CURRENT
-        # navigation rather than stale embedded state, so a marker match
-        # past round 0 (round 0 is corroborated by the page.url check that
-        # already ran right after the initial goto) is only trusted when
-        # `page.url` still shows the gateway too.
-        captcha_detected = detect_from_html(html, sp.BOT_CHALLENGE_MARKERS)
-        if captcha_detected and round_num > 0 and not any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
-            log.warning(
-                "A bot-mitigation marker matched stale page text, but the page has moved on to "
-                "%s (%s) — not re-flagging this round as a captcha block.",
-                page.url, sp.diagnose_unexpected_page(html),
-            )
-            captcha_detected = False
-        if captcha_detected and not cards_present:
-            blocked = True
-        captcha_result = None
-        if captcha_detected:
-            captcha_result = await _maybe_solve_captcha(html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score, page=page, args=args)
-        if captcha_result and captcha_result.get("action") in ("warning_no_key", "warning_solver_error", "detected_unidentified_widget"):
-            if sp.count_result_cards(html) == 0:
-                blocked = True
-
-        result = sp.safe_parse_search_results(html, max_results=args.max_results, raw_data=raw_data)
-        args._rejected_rows = max(getattr(args, "_rejected_rows", 0), result.rejected_rows)
-        if result.source_used == "none" and round_num == 0 and not blocked:
-            # See shein_parser.diagnose_unexpected_page's own docstring — a
-            # real, live 2026-09-21 case (Roman's own first engine run) hit
-            # exactly this with a page that wasn't blocked, wasn't a parse
-            # bug, but genuinely wasn't a search-results page at all.
-            log.warning(
-                "No products recognised on the first render (%s, final URL: %s) — either "
-                "this search genuinely has no results, shein_parser.py's window.gbRawData "
-                "path needs updating for the current shein.com markup, or shein.com served "
-                "a DIFFERENT page than search results for this request (a real, not just "
-                "hypothetical, case — see shein_parser.py's module docstring, "
-                "'First real engine run' section). Re-run with --dump-html to inspect the "
-                "captured page.",
-                sp.diagnose_unexpected_page(html), page.url,
-            )
-
-        round_skus = {_sku_key(p) for p in result.products}
-        new_skus = round_skus - seen_skus
-        current_product_count = len(round_skus)
-        if new_skus:
-            for p in result.products:
-                if _sku_key(p) in new_skus:
-                    merged.append(p)
-            seen_skus |= new_skus
-            stall = 0
-        else:
-            if previous_product_count == current_product_count:
-                stall += 1
-            else:
-                stall = 0
-        previous_product_count = current_product_count
-
-        if result.products:
-            blocked = False
-
-        if len(merged) >= args.max_results:
-            merged = merged[: args.max_results]
-            break
-        if round_num >= args.max_scrolls:
-            break
-        if stall >= args.stall_rounds:
-            break
-
-        try:
-            # Whether this actually grows window.gbRawData with more real
-            # products, or just renders more skeleton/lazy cards already
-            # present in the initial DOM, is UNCONFIRMED — see
-            # shein_parser.py's module docstring. The stall-based
-            # `--stall-rounds` cap above is what keeps this loop bounded
-            # either way, rather than assuming scrolling always helps.
-            await page.evaluate(
-                "() => window.scrollBy(0, Math.max(Math.floor(window.innerHeight * 0.8), 600))"
-            )
-        except Exception as exc:  # noqa: BLE001 — a scroll failure ends the loop, not the run
-            log.warning("Scroll failed, stopping pagination early: %s", exc)
-            scroll_error = True
-            break
-        await asyncio.sleep(_jittered_delay(args.scroll_delay, args.delay_jitter))
-
-    final_html = await page.content()
-    final_raw_data = await _read_gb_raw_data(page)
-    total_available = sp.total_result_count(final_html, raw_data=final_raw_data)
-    args._total_results = total_available
-    expected = min(total_available, args.max_results) if total_available is not None else None
-    if expected is not None and len(merged) < expected:
-        log.warning(
-            "Fewer products collected than SHEIN reports available: reports %d, requested %d, collected %d.",
-            total_available, args.max_results, len(merged),
-        )
-        scroll_error = True
-
-    if args.dump_html:
-        Path(_dump_path(args.out)).write_text(final_html, encoding="utf-8")
-
-    await _close_scrape_page(page, context, reuse_default=reuse_default)
-    return merged, blocked, remote_api_error, rounds, scroll_error
-
-
-async def scrape_product_page(
-    *, args: argparse.Namespace, start_url: str, browser: Browser,
-    proxy_pool: Optional[ProxyPool], client: Optional[TwoCaptchaClient],
-    autosolve: bool, user_agent: Optional[str],
-) -> tuple:
-    """A --url pointed directly at one product page — confirmed real via
-    shein_parser.parse_product_page()'s JSON-LD path. Returns the same
-    5-tuple shape as scrape_search() for a uniform caller."""
-    blocked = False
-    remote_api_error = False
-
-    proxy = proxy_pool.next() if proxy_pool else None
-    reuse_default = bool(args.cdp_endpoint)
-    context = await _new_context(browser, proxy, user_agent, reuse_default=reuse_default)
-    page = await context.new_page()
-    if autosolve:
-        await _enable_scraping_browser_auto_solve(context, page)
-
-    last_error = None
-    status = None
-    for attempt in range(args.retries + 1):
-        try:
-            response = await page.goto(start_url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
-            await page.wait_for_timeout(READINESS_WAIT_MS)
-            status = response.status if response is not None else None
-            last_error = None
-            break
+            return await self.page.evaluate("() => window.gbRawData || null")
         except Exception as exc:  # noqa: BLE001
-            last_error = str(exc)
-            log.warning("Navigation attempt %d/%d failed: %s", attempt + 1, args.retries + 1, last_error)
-            if attempt < args.retries:
-                await asyncio.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
+            log.debug("page.evaluate('window.gbRawData') failed, will fall back to HTML extraction: %s", exc)
+            return None
 
-    if last_error is not None:
-        await _close_scrape_page(page, context, reuse_default=reuse_default)
-        return [], False, True, 0, False
+    async def scroll(self) -> None:
+        await self.page.evaluate("() => window.scrollBy(0, Math.max(Math.floor(window.innerHeight * 0.8), 600))")
 
-    if "/risk/action/limit" in page.url:
-        args._rate_limited = True
-    if await _maybe_pass_risk_challenge(page, args, client):
-        status = None
-    if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
-        blocked = True
-    if status is not None and status >= 400:
-        blocked = True
+    async def pass_risk_challenge(self, client: Optional[TwoCaptchaClient]) -> bool:
+        return await _maybe_pass_risk_challenge(self.page, self.args, client)
 
-    html = await page.content()
-    # Fixed 2026-09-22 (documented in README "Known limitations" as a real,
-    # confirmed, not-yet-fixed gap): this path never attempted captcha
-    # solving at all — only scrape_search()'s round loop called
-    # _maybe_solve_captcha. `count_product_links` here is product-page-
-    # shaped (did the page already parse?), not search-page-shaped — see
-    # _maybe_solve_captcha's own docstring for why passing the default
-    # would be wrong here.
-    captcha_result = None
-    if detect_from_html(html, sp.BOT_CHALLENGE_MARKERS):
-        captcha_result = await _maybe_solve_captcha(
-            html=html, url=start_url, client=client, policy=args.solve_captcha, min_score=args.min_score,
-            page=page, count_product_links=lambda h: 1 if sp.parse_product_page(h, url=start_url) else 0,
-        args=args)
-        if captcha_result and captcha_result.get("action") == "solved":
-            # No scroll/round loop here to pick the injection up naturally
-            # on a later round the way scrape_search() does — a single
-            # re-fetch after a beat is what actually gives this attempt a
-            # chance to matter, rather than solving/injecting a token that
-            # nothing ever re-reads.
-            await page.wait_for_timeout(READINESS_WAIT_MS)
-            html = await page.content()
-        elif captcha_result and captcha_result.get("action") in ("warning_no_key", "warning_solver_error", "detected_unidentified_widget"):
-            if not sp.parse_product_page(html, url=start_url):
-                blocked = True
+    async def solve_captcha(self, *, html: str, url: str, client: Optional[TwoCaptchaClient], count_product_links=None):
+        return await _maybe_solve_captcha(html=html, url=url, client=client, policy=self.args.solve_captcha,
+                                          min_score=self.args.min_score, page=self.page,
+                                          count_product_links=count_product_links, args=self.args)
 
-    product = sp.parse_product_page(html, url=start_url)
-    if args.dump_html:
-        Path(_dump_path(args.out)).write_text(html, encoding="utf-8")
-    await _close_scrape_page(page, context, reuse_default=reuse_default)
-    products = [product] if product else []
-    if not products and not blocked:
-        log.warning("Product page rendered but no ProductGroup/Product JSON-LD was found — see shein_parser.py.")
-    return products, blocked, remote_api_error, 0, False
+    async def close(self) -> None:
+        await _close_scrape_page(self.page, self.context, reuse_default=self.reuse_default)
 
 
-def _scrape_via_scraper_api(
-    *, args: argparse.Namespace, start_url: str, is_product_page: bool, client: TwoCaptchaClient,
-    cdp_url: Optional[str] = None,
-) -> tuple:
-    """--scraper-api's own fetch path: one browserless HTTP call to
-    2Captcha's Scraper API, no local/CDP browser, no scroll loop (a static
-    HTML snapshot can't scroll itself — see --scraper-api's help text).
-    Returns the same 5-tuple shape as scrape_search()/scrape_product_page()
-    so run() below can treat all three the same way; `rounds` is always 0
-    here since there is exactly one fetch, never a round loop.
+class _PlaywrightEngine:
+    """page_flow.Engine: opens a page per attempt on the run's browser.
+    Over --cdp-endpoint the profile's default context is reused, so an
+    already-cleared challenge and its cookies survive; a local launch gets
+    a fresh context per attempt."""
 
-    `cdp_url`, when --scraper-api-cdp set one (see run()), routes this
-    fetch through 2Captcha's own Scraping Browser instead of their
-    default pool — real captcha auto-solve and the selected account's proxy settings apply on
-    2Captcha's side of that session, not in this function; there is
-    nothing this function itself needs to do differently to benefit from
-    it beyond passing it through."""
-    try:
-        result = client.scrape_url(start_url, timeout=args.scraper_api_timeout, cdp_url=cdp_url)
-    except TwoCaptchaAuthError as exc:
-        log.error("Scraper API: %s", exc)
-        return [], False, True, 0, False
-    except TwoCaptchaError as exc:
-        log.error("Scraper API request failed — treating as remote_api_error, not a crash: %s", exc)
-        return [], False, True, 0, False
+    name = ENGINE_NAME
+    readiness_s = READINESS_WAIT_MS / 1000
 
-    html = result.body
-    if "/risk/action/limit" in html:
-        args._rate_limited = True
-    blocked = False
-    if result.target_status is not None and result.target_status >= 400:
-        log.warning("Scraper API: target page returned HTTP %d — treating as blocked.", result.target_status)
-        blocked = True
-    # No live page.url to corroborate a marker match against here (see
-    # scrape_search()'s own comment on why that check exists on the
-    # browser path) — this fetch's body IS the final response, there is
-    # nothing further the target could have navigated on to in the
-    # meantime, so a marker match is trusted outright.
-    if detect_from_html(html, sp.BOT_CHALLENGE_MARKERS):
-        blocked = True
+    def __init__(self, browser: Browser, args: argparse.Namespace, *, autosolve: bool, user_agent: Optional[str]):
+        self.browser, self.args, self.autosolve, self.user_agent = browser, args, autosolve, user_agent
 
-    if args.dump_html:
-        Path(_dump_path(args.out)).write_text(html, encoding="utf-8")
+    async def open(self, proxy) -> _PlaywrightSession:
+        reuse_default = bool(self.args.cdp_endpoint)
+        context = await _new_context(self.browser, proxy, self.user_agent, reuse_default=reuse_default)
+        page = await context.new_page()
+        if self.autosolve:
+            await _enable_scraping_browser_auto_solve(context, page)
+        return _PlaywrightSession(page, context, reuse_default=reuse_default, args=self.args)
 
-    # --solve-captcha itself is still a documented no-op here: THIS
-    # function never calls captcha_solver/TwoCaptchaClient.solve_and_wait
-    # — there is no live page/DOM in this mode for a solved token to be
-    # injected into (see --scraper-api's help text). Captcha handling in
-    # this mode comes entirely from --scraper-api-cdp instead (2Captcha's
-    # own Scraping Browser solves on their side of that session, before
-    # the HTML ever reaches this function) — --block-retries (retry this
-    # same call) remains the only mitigation for a still-blocked response
-    # either way.
-    if is_product_page:
-        product = sp.parse_product_page(html, url=start_url)
-        products = [product] if product else []
-        if not products and not blocked:
-            log.warning("Product page fetched via Scraper API but no ProductGroup/Product JSON-LD was found.")
-        return products, blocked, False, 0, False
-
-    parsed = sp.safe_parse_search_results(html, max_results=args.max_results)
-    args._rejected_rows = max(getattr(args, "_rejected_rows", 0), parsed.rejected_rows)
-    if parsed.source_used == "none" and not blocked:
-        log.warning(
-            "No products recognised in the Scraper API response (%s) — either this search "
-            "genuinely has no results, or the fetch landed on a page/locale this repo's parser "
-            "doesn't recognise (--scraper-api's help text has the known locale caveat). Re-run "
-            "with --dump-html to inspect what actually came back.",
-            sp.diagnose_unexpected_page(html),
-        )
-    return parsed.products, blocked, False, 0, False
+    async def sleep(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
 
 
 async def run(args: argparse.Namespace) -> int:
-    args._rate_limited = False
-    args._cooldown_used = False
-    args._rejected_rows = 0
-    args._total_results = None
-    args._solve_budget = shein_challenge.SolveBudget(args.max_solves)
+    page_flow.init_run_state(args, shein_challenge.SolveBudget)
     started_at = time.time()
     start_url, is_product_page = _resolve_start_url(args)
     if not start_url:
@@ -816,119 +515,13 @@ async def run(args: argparse.Namespace) -> int:
     if args.scraper_api_cdp and not args.scraper_api:
         print("Error: --scraper-api-cdp requires --scraper-api", file=sys.stderr)
         return EXIT_BAD_USAGE
-
     if args.scraper_api:
-        # A whole separate, browserless code path — no Playwright import
-        # is needed at all here (this mode runs even in an environment
-        # with no engine driver installed — see CLAUDE.md §6), so the
-        # async_playwright-is-None check below is skipped entirely.
+        # Browserless: runs even with no engine driver installed (CLAUDE.md §6).
         if not args.twocaptcha_key:
             print("Error: --scraper-api requires --twocaptcha-key/TWOCAPTCHA_KEY", file=sys.stderr)
             return EXIT_BAD_USAGE
-        if args.proxy or args.proxy_file or args.cdp_endpoint or args.fingerprint:
-            log.warning(
-                "--scraper-api ignores --proxy/--proxy-file/--cdp-endpoint/--fingerprint — this mode "
-                "brings its own exit IP/device via 2Captcha's own infrastructure, see --scraper-api's "
-                "help text."
-            )
-        if (args.scraper_api_country or args.scraper_api_profile_id or args.scraper_api_account_id) and not args.scraper_api_cdp:
-            log.warning(
-                "--scraper-api-country/--scraper-api-account-id/--scraper-api-profile-id are ignored without --scraper-api-cdp "
-                "— there is no Scraping Browser session for them to apply to."
-            )
-        client = TwoCaptchaClient(args.twocaptcha_key, api_base=args.captcha_api, scraper_api_base=args.scraper_api_url)
-        cdp_url = None
-        if args.scraper_api_cdp and not args.scraper_api_profile_id:
-            log.warning(
-                "--scraper-api-cdp without --scraper-api-profile-id — each run gets a fresh "
-                "profile from 2Captcha's default pool instead of a warmed, reused identity. "
-                "Pass --scraper-api-profile-id to reuse one across runs (see "
-                "scraping_browser_connection_url's docstring and README/TESTING.md)."
-            )
-        if args.scraper_api_cdp:
-            # Constructed once, reused across every --block-retries attempt
-            # below — same reuse-a-profile principle scraping_browser_
-            # connection_url's own docstring recommends, not a fresh
-            # session minted per attempt.
-            try:
-                cdp_url = client.scraping_browser_connection_url(
-                    country=args.scraper_api_country, profile_id=args.scraper_api_profile_id,
-                    account_id=args.scraper_api_account_id,
-                )
-            except TwoCaptchaError as exc:
-                log.error("Scraping Browser connection setup failed: %s", exc)
-                return EXIT_REMOTE_API_ERROR
-        blocked = remote_api_error = False
-        merged: List[Product] = []
-        cdp_fallback_used = False
-        # A counter, not range(): the one --rate-limit-cooldown retry must not
-        # spend a --block-retries attempt (audit 2026-09-30: with --block-retries 0
-        # the promised retry never ran, because `continue` ended the loop).
-        block_attempt = 0
-        while True:
-            merged, blocked, remote_api_error, rounds, scroll_error = _scrape_via_scraper_api(
-                args=args, start_url=start_url, is_product_page=is_product_page, client=client,
-                cdp_url=cdp_url,
-            )
-            if remote_api_error and cdp_url is not None and not cdp_fallback_used:
-                # The Scraping Browser session itself is what failed here (an
-                # HTTP-level error from client.scrape_url — bad/expired
-                # cdpurl, or a generic Scraper API problem that would fail
-                # identically without it), not a normal blocked-with-zero-
-                # products outcome, so this isn't what --block-retries is
-                # for. One automatic fallback attempt on 2Captcha's plain
-                # default pool instead of giving up outright — this drops
-                # --scraper-api-cdp's country/profile pinning and 2Captcha's
-                # own captcha auto-solve for the rest of this run, so it's
-                # logged loudly, not silent. cdp_url is cleared for good
-                # (not just this attempt) so a remaining --block-retries
-                # attempt doesn't keep hitting the same broken session.
-                log.warning(
-                    "--scraper-api-cdp's Scraping Browser session failed — falling back to "
-                    "--scraper-api's plain default pool for the rest of this run instead of "
-                    "giving up outright. This run no longer has --scraper-api-cdp's country/"
-                    "profile selection or 2Captcha's own captcha auto-solve."
-                )
-                cdp_fallback_used = True
-                cdp_url = None
-                merged, blocked, remote_api_error, rounds, scroll_error = _scrape_via_scraper_api(
-                    args=args, start_url=start_url, is_product_page=is_product_page, client=client,
-                    cdp_url=cdp_url,
-                )
-            if args._rate_limited:
-                if args.rate_limit_cooldown > 0 and not args._cooldown_used:
-                    args._cooldown_used = True
-                    args._rate_limited = False
-                    _wait_s = _jittered_delay(args.rate_limit_cooldown, args.delay_jitter)
-                    log.warning(
-                        "SHEIN rate limit reached — waiting %.0fs (opt-in --rate-limit-cooldown, "
-                        "honoring the ~5 minute cooldown observed live) before ONE retry on the "
-                        "same session, instead of giving up immediately.",
-                        _wait_s,
-                    )
-                    time.sleep(_wait_s)
-                    continue
-                log.warning("SHEIN rate limit reached; stopping this run without block retries. Try again after at least five minutes.")
-                break
-            if remote_api_error or not (blocked and not merged):
-                break
-            if block_attempt >= args.block_retries:
-                break
-            block_attempt += 1
-            log.warning(
-                "Blocked with zero products (Scraper API attempt %d/%d) — retrying the same "
-                "fetch before giving up.",
-                block_attempt, args.block_retries + 1,
-            )
-            time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
-        price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
-        return finish_run(
-            products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
-            pages_requested=1, pages_completed=0 if remote_api_error else 1, failed_pages=None,
-            blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent, "sort": getattr(args, "sort", None)},
-            rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None), price_confirmed_pct=price_confirmed_pct,
-        )
+        return await page_flow.run_scraper_api(args, start_url=start_url, is_product_page=is_product_page,
+                                               engine_name=ENGINE_NAME, started_at=started_at)
 
     if async_playwright is None:
         print(f"Error: playwright is not installed ({_PLAYWRIGHT_IMPORT_ERROR}). "
@@ -947,8 +540,7 @@ async def run(args: argparse.Namespace) -> int:
         client = TwoCaptchaClient(args.twocaptcha_key, api_base=args.captcha_api)
 
     user_agent = None
-    cdp_refused_fingerprint = refuse_if_cdp(args.cdp_endpoint)
-    if args.fingerprint and not cdp_refused_fingerprint:
+    if args.fingerprint and not refuse_if_cdp(args.cdp_endpoint):
         if client is None:
             log.warning("--fingerprint requested but no --twocaptcha-key/TWOCAPTCHA_KEY set — continuing without one.")
         else:
@@ -956,7 +548,6 @@ async def run(args: argparse.Namespace) -> int:
             if profile:
                 user_agent = user_agent_from(profile)
 
-    cdp_connect_failed = False
     try:
         async with async_playwright() as pw:
             if args.cdp_endpoint:
@@ -967,85 +558,21 @@ async def run(args: argparse.Namespace) -> int:
                     browser = await _connect_over_cdp(pw, args.cdp_endpoint)
                 except RuntimeError as exc:
                     log.error("CDP connection failed — treating as remote_api_error, not a crash: %s", exc)
-                    cdp_connect_failed = True
-                    browser = None
+                    return page_flow.finish(args, merged=[], blocked=False, remote_api_error=True,
+                                            engine_name=ENGINE_NAME, start_url=start_url, started_at=started_at,
+                                            pages_requested=args.max_scrolls, pages_completed=1, failed_pages=None)
             else:
                 browser = await pw.chromium.launch(headless=args.headless)
-
-            if cdp_connect_failed:
-                merged, blocked, remote_api_error, rounds, scroll_error = [], False, True, 0, False
-            else:
-                autosolve = bool(args.cdp_endpoint) and args.solve_captcha != "off"
-                scrape_fn = scrape_product_page if is_product_page else scrape_search
-                # "Retry before you rotate" (etsy-scraper's own measured finding
-                # against a comparably hard bot-mitigation system — see the
-                # --block-retries help text): a blocked, zero-product outcome
-                # gets retried on the SAME browser connection — same exit IP,
-                # same CDP-provided device identity if --cdp-endpoint is in
-                # play — before this run gives up. Local launches get a fresh
-                # context per attempt. CDP attempts reuse the provider's
-                # default context so an already-cleared risk challenge and
-                # its cookies survive across pages and runs.
-                # A counter, not range(): the one --rate-limit-cooldown retry must not
-                # spend a --block-retries attempt (audit 2026-09-30: with --block-retries 0
-                # the promised retry never ran, because `continue` ended the loop).
-                block_attempt = 0
-                while True:
-                    merged, blocked, remote_api_error, rounds, scroll_error = await scrape_fn(
-                        args=args, start_url=start_url, browser=browser, proxy_pool=proxy_pool,
-                        client=client, autosolve=autosolve, user_agent=user_agent,
-                    )
-                    if args._rate_limited:
-                        if args.rate_limit_cooldown > 0 and not args._cooldown_used:
-                            args._cooldown_used = True
-                            args._rate_limited = False
-                            _wait_s = _jittered_delay(args.rate_limit_cooldown, args.delay_jitter)
-                            log.warning(
-                                "SHEIN rate limit reached — waiting %.0fs (opt-in --rate-limit-cooldown, "
-                                "honoring the ~5 minute cooldown observed live) before ONE retry on the "
-                                "same session, instead of giving up immediately.",
-                                _wait_s,
-                            )
-                            await asyncio.sleep(_wait_s)
-                            continue
-                        log.warning("SHEIN rate limit reached; stopping this run without block retries. Try again after at least five minutes.")
-                        break
-                    if not (blocked and not merged):
-                        break
-                    if block_attempt >= args.block_retries:
-                        break
-                    block_attempt += 1
-                    log.warning(
-                        "Blocked with zero products (attempt %d/%d on this same browser session) "
-                        "— retrying on the SAME exit/identity rather than giving up immediately.",
-                        block_attempt, args.block_retries + 1,
-                    )
-                    await asyncio.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
+            engine = _PlaywrightEngine(browser, args, autosolve=bool(args.cdp_endpoint) and args.solve_captcha != "off",
+                                       user_agent=user_agent)
+            try:
+                return await page_flow.run_browser(engine, args, start_url=start_url, is_product_page=is_product_page,
+                                                   proxy_pool=proxy_pool, client=client, started_at=started_at)
+            finally:
                 await browser.close()
     except Exception:
         log.exception("Unhandled error — this is a crash, not a normal blocked/empty run")
         return EXIT_CRASH
-
-    price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
-    completed_rounds = rounds + 1
-    failed_pages = [completed_rounds + 1] if scroll_error else None
-
-    return finish_run(
-        products=merged,
-        out_path=args.out,
-        fmt=args.format,
-        engine=ENGINE_NAME,
-        url=start_url,
-        pages_requested=args.max_scrolls,
-        pages_completed=completed_rounds,
-        failed_pages=failed_pages,
-        blocked=blocked,
-        remote_api_error=remote_api_error,
-        allow_empty=args.allow_empty,
-        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, extra_meta={"solves_spent": _budget(args).spent, "sort": getattr(args, "sort", None)},
-            rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None),
-        price_confirmed_pct=price_confirmed_pct,
-    )
 
 
 def main() -> int:

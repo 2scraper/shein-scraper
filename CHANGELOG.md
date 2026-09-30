@@ -9,6 +9,46 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Changed — 2026-09-30, one fetch loop for all three engines (`page_flow.py`, CLAUDE.md §26)
+- The page loop, block/cooldown retries, the Scraper API mode and the
+  `finish_run` call were three near-identical copies (2,959 engine lines).
+  They are now one implementation. The engines keep only driver plumbing:
+  a page session with named operations, plus arguments and setup (1,680
+  lines).
+- **Drift the unification removed, found by diffing the copies first:**
+  - Playwright never reported a dead proxy on navigation (its
+    `is_proxy_dead_error` import was unused);
+  - Selenium and pyppeteer credited an exit as healthy before reading the
+    HTTP status;
+  - pyppeteer reconnected to the Scraping Browser on every block retry and
+    `close()`d the remote browser, ending the session. It now connects
+    once per run and disconnects.
+- **Tests**: 16 checks that pinned loop features in each engine's source
+  were replaced by checks on the one place they now live, plus the two
+  §26 asks for:
+  - the session/engine operation set is DERIVED from `page_flow`'s AST, and
+    every engine must provide it;
+  - the shared loop is driven end to end by a fake engine on the real
+    gbRawData capture: listing, gateway block after `--block-retries`+1
+    attempts, passed challenge, rate limit plus cooldown, 403, scroll
+    failure (partial), product page, and dead/failing/healthy proxy
+    reporting.
+
+  Four planted faults: three went red at once. The fourth (the URL read
+  before the challenge pass) stayed GREEN, a hole; the ordering check and
+  a proxy-reporting assertion were tightened until it went red.
+- **Live, after the refactor**, one US profile:
+  - Playwright passed an icon challenge (round 3) and completed with 10
+    products;
+  - Puppeteer reconnected through a locked profile (500, then OK) and
+    completed;
+  - after ~10 runs the profile hit `/risk/action/limit`, and a product-page
+    run exited 3 with the rate-limit message;
+  - Selenium (local) was rate-limited and exited 3.
+- A round whose accepted answer swapped the sprite before redirecting,
+  with no "Successful!" readable yet, is now given 4s to redirect before
+  it counts as a rejection (seen live twice).
+
 ### Fixed — 2026-09-30, live re-validation of the day's changes (fresh US profile)
 - **Playwright over CDP passed the `icon_click` challenge** (round 3,
   `validation/check code=0`, widget "Successful!") and returned 10 priced
