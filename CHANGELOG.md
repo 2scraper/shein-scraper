@@ -9,6 +9,64 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Added — 2026-09-30, automated pass of SHEIN's `/risk/challenge` (`shein_challenge.py`, `--risk-challenge-rounds`)
+- Prompted by Roman asking for the scraper to get past the blocked page
+  itself. This reverses the 2026-09-29 scope note below ("stays a manual,
+  human step"), on Roman's explicit request.
+- Captured live first, through a fresh US Browser API profile: the gateway
+  is SHEIN's own, no third-party vendor. `validate_type=one_pass` shows an
+  "I am human" checkbox. On click the server either lets the session
+  through or escalates to `validate_type=nine_captcha`, an open-shadow-DOM
+  `<nine-captcha-custom>` 3x3 image grid ("Please select all images
+  according to the icon"). It has no confirm button: it auto-submits after
+  the third pick, then shows `.nine-success` and redirects to the original
+  URL, or shows `.nine-fail` and swaps in new images.
+- New `shein_challenge.py` (driver-agnostic, same split as
+  `captcha_solver.py`): `STATE_JS` reads the stage across every open
+  shadow root. The checkbox is clicked with a human-ish mouse path; the
+  grid and icon are screenshotted and sent as a 2Captcha `GridTask`
+  (`rows=3`, `columns=3`, icon as `imgInstructions`); the returned tiles
+  are clicked. A SHEIN-rejected round is retried with fresh images rather
+  than reported as a bad answer: live, a verifiably correct answer still
+  got `code=9001 "System error"`. All three engines call it on both the
+  search and product-page paths, before the gateway URL is judged
+  blocked, and it never raises (CLAUDE.md §6).
+- `--risk-challenge-rounds N` (default 5, `0` disables; also skipped with
+  `--solve-captcha off`). The checkbox step needs no key; the grid needs
+  `TWOCAPTCHA_KEY`. With `--dump-html`, each round's grid/icon/after-click
+  PNGs go to `<out>_challenge/`.
+- Two bugs were found live and fixed before this shipped. (1) A hidden
+  `.header-content-img` came first in document order, so the icon was
+  silently dropped and the solver guessed blind. `STATE_JS` now takes the
+  first visible match, pinned by a real-Chromium check against a replica
+  of the captured shadow DOM. (2) A state read racing SHEIN's own success
+  redirect raised "execution context was destroyed"; that now reads as
+  navigation.
+- Live results (Playwright, `--cdp-endpoint`): the prototype passed on
+  round 2. The CLI run with `--risk-challenge-rounds 4` passed on round 3
+  (before the icon fix) and finished `status=complete`, exit 0, 10
+  products with prices on all 10. The earlier CLI run, before the widget-
+  render wait was added, failed all rounds and exited 3. Selenium and
+  Puppeteer are wired identically but have NOT been run live; neither
+  driver is installed in this checkout's venv.
+- A second fresh US profile, the same day, did NOT pass. With the icon
+  fix in place, its first correct answer was rejected, and then 2Captcha
+  workers returned 4-, 5- and 1-tile answers. The widget submitted the
+  first three picks of each, so wrong answers reached SHEIN. On the next
+  two runs every submission, including answers verified correct by eye,
+  got `validation/check` `code=9001 "System error"` (10 of 10). Read as:
+  `9001` is a risk-score rejection, not a wrong-answer verdict, and this
+  profile is burned. Unconfirmed whether the wrong submissions caused
+  that or the profile started out low-trust.
+- In response, an answer that does not pick exactly 3 tiles is never
+  clicked: the grid is refreshed instead. The widget submits on the third
+  pick, and a two-pick answer was seen to sit unsubmitted, so a correct
+  answer is three tiles. The GridTask comment now says "exactly 3". The
+  Playwright engine logs every `validation/check` verdict
+  (`code`/`msg`), the one signal separating a wrong answer from a risk
+  rejection. Not yet re-verified on an unburned profile.
+- `smoke_test.py`: 78 → 87 checks.
+
 ### Added — 2026-09-29, block-risk-reduction: delay jitter, opt-in rate-limit cooldown, profile-reuse warning
 - Prompted by Roman asking to reduce block risk after the captcha/rate-limit
   incidents above. Explicitly **not** in scope: identifying or

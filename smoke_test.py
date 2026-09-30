@@ -46,6 +46,7 @@ import proxy_pool
 import puppeteer_scraper
 import scraper_api_client
 import selenium_scraper
+import shein_challenge
 import shein_parser as sp
 
 try:
@@ -1771,6 +1772,279 @@ def _():
             f"{path}: missing the profile-reuse warning gate"
         )
         assert "each run gets a fresh" in src, f"{path}: profile-reuse warning text missing/changed"
+
+
+# --------------------------------------------------------------------------- #
+# SHEIN /risk/challenge automated pass (shein_challenge.py, 2026-09-30)
+# --------------------------------------------------------------------------- #
+_CHALLENGE_URL = "https://us.shein.com/risk/challenge?captcha_type=909&redirection=https%3A%2F%2Fus.shein.com%2Fpdsearch%2Fdress%2F"
+
+
+def _nine_tiles():
+    # The live 3x3 layout: 120px tiles on a 132px pitch.
+    return [[528 + c * 132, 185 + r * 132, 120, 120] for r in range(3) for c in range(3)]
+
+
+class _FakeChallenge:
+    """Scripted shein_challenge.ChallengeDriver: one_pass -> nine_captcha,
+    with `grid_results` deciding each round's outcome ("fail"/"success")."""
+
+    def __init__(self, *, grid_results, escalate=True, state_raises_after_success=False):
+        self.url_now = _CHALLENGE_URL
+        self.stage = "one_pass"
+        self.grid_results = list(grid_results)
+        self.escalate = escalate
+        self.state_raises_after_success = state_raises_after_success
+        self.clicks = []
+        self.shots = []
+        self.round_clicks = 0
+        self.image_set = 0
+        self.result = None
+        self.redirect_in = None
+
+    async def url(self):
+        if self.redirect_in is not None:
+            self.redirect_in -= 1
+            if self.redirect_in <= 0:
+                self.url_now = "https://us.shein.com/pdsearch/dress/"
+        return self.url_now
+
+    async def state(self):
+        if self.result == "success" and self.state_raises_after_success:
+            raise RuntimeError("Execution context was destroyed, most likely because of a navigation")
+        if self.stage == "one_pass":
+            return {"stage": "one_pass", "checkbox": [793, 495, 73, 19], "scroll": [0, 0]}
+        if self.stage == "nine_captcha":
+            return {"stage": "nine_captcha", "tiles": list(reversed(_nine_tiles())), "icon": [853, 113, 54, 54],
+                    "refresh": [528, 609, 387, 46], "srcs": [f"set{self.image_set}-{i}" for i in range(9)],
+                    "loading": False, "result": self.result, "scroll": [0, 0]}
+        return {"stage": "none"}
+
+    async def screenshot(self, clip):
+        self.shots.append(clip)
+        return b"\x89PNG-fake"
+
+    async def click(self, x, y):
+        self.clicks.append((x, y))
+        if self.stage == "one_pass":
+            if self.escalate:
+                self.stage = "nine_captcha"
+            else:
+                self.redirect_in = 1
+            return
+        if self.stage == "nine_captcha":
+            if 528 <= x <= 528 + 387 and 609 <= y <= 609 + 46:  # the refresh button: new images, no pick
+                self.round_clicks = 0
+                self.image_set += 1
+                return
+            self.round_clicks += 1
+            if self.round_clicks == 3:  # live: the widget auto-submits on the 3rd pick
+                self.round_clicks = 0
+                outcome = self.grid_results.pop(0)
+                if outcome == "success":
+                    self.result = "success"
+                    self.redirect_in = 2
+                else:
+                    self.result = None
+                    self.image_set += 1  # a failed round swaps in fresh images
+
+    async def sleep(self, seconds):
+        return None
+
+
+def _grid_solver(answers):
+    calls = []
+
+    async def solve(task):
+        calls.append(task)
+        return json.dumps({"click": answers[len(calls) - 1]})
+    return solve, calls
+
+
+@check("shein_challenge pure helpers: row-major tile order, grid clip, GridTask payload, defensive click parsing")
+def _():
+    tiles = shein_challenge.order_tiles(list(reversed(_nine_tiles())))
+    assert tiles == _nine_tiles(), "tiles must be ordered top-to-bottom, left-to-right (GridTask numbering)"
+    jittered = [[t[0], t[1] + (0.4 if i % 2 else -0.4), t[2], t[3]] for i, t in enumerate(_nine_tiles())]
+    assert [t[0] for t in shein_challenge.order_tiles(jittered)[:3]] == [528, 660, 792], "sub-pixel y noise reordered a row"
+    clip = shein_challenge.grid_clip(tiles, scroll=(0, 100))
+    assert clip == {"x": 528, "y": 285, "width": 384, "height": 384}, clip
+    task = shein_challenge.build_grid_task(b"grid", b"icon")
+    assert task["type"] == "GridTask" and task["rows"] == 3 and task["columns"] == 3
+    assert task["body"] == "Z3JpZA==" and task["imgInstructions"] == "aWNvbg=="
+    assert "imgInstructions" not in shein_challenge.build_grid_task(b"grid", None)
+    assert shein_challenge.parse_grid_clicks('{"click": [1, "7", 8, 8, 0, 10, "x"]}') == [1, 7, 8]
+    assert shein_challenge.parse_grid_clicks("not json") == []
+    assert shein_challenge.parse_grid_clicks('{"token": "abc"}') == []
+
+
+@check("shein_challenge: checkbox -> image grid, a SHEIN-rejected round is retried with FRESH images (live 2026-09-30: a correct answer still got code 9001), then success + redirect -> passed")
+def _():
+    fake = _FakeChallenge(grid_results=["fail", "success"])
+    solve, calls = _grid_solver([[1, 7, 8], [1, 6, 9]])
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=3, solve=solve, step_timeout=2, redirect_timeout=5))
+    assert out.passed, out
+    assert out.solves == 2 and out.rounds == 2, out
+    assert len(calls) == 2 and all("imgInstructions" in c for c in calls), "the icon must be sent with every GridTask"
+    x, y = fake.clicks[0]
+    assert (x, y) == (773, 504.5), f"checkbox click should land just left of its label, got {(x, y)}"
+    tiles = _nine_tiles()
+    picked = fake.clicks[1:4]
+    for (px, py), n in zip(picked, [1, 7, 8]):
+        t = tiles[n - 1]
+        assert t[0] <= px <= t[0] + t[2] and t[1] <= py <= t[1] + t[3], f"click {(px, py)} missed tile {n}"
+
+
+@check("shein_challenge: passes at the checkbox alone when SHEIN does not escalate, with no key and no solve spent")
+def _():
+    fake = _FakeChallenge(grid_results=[], escalate=False)
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=3, step_timeout=2))
+    assert out.passed and out.solves == 0, out
+    assert len(fake.clicks) == 1
+
+
+@check("shein_challenge: no TWOCAPTCHA_KEY still clicks the free checkbox step, then stops at the grid with a clear reason (no crash, no solve)")
+def _():
+    fake = _FakeChallenge(grid_results=["success"])
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, scraper_api_client.TwoCaptchaClient(None), max_rounds=3, step_timeout=2))
+    assert not out.passed and out.solves == 0, out
+    assert "TWOCAPTCHA_KEY" in out.detail, out.detail
+    assert len(fake.clicks) == 1
+
+
+@check("shein_challenge: an answer that does not pick exactly 3 tiles (live: 1, 4 and 5 picks all came back) is never clicked — the grid is refreshed and the next round tried")
+def _():
+    fake = _FakeChallenge(grid_results=["success"])
+    solve, calls = _grid_solver([[1, 2, 7, 8], [6], [2, 5, 8]])
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=5, solve=solve, step_timeout=2, redirect_timeout=5))
+    assert out.passed and len(calls) == 3, out
+    refresh_center = (528 + 387 / 2, 609 + 46 / 2)
+    grid_clicks = [c for c in fake.clicks[1:] if c != refresh_center]
+    assert fake.clicks[1:].count(refresh_center) == 2, f"expected two refresh clicks, got {fake.clicks[1:]}"
+    assert len(grid_clicks) == 3, f"only the 3-pick answer should reach the tiles, got {grid_clicks}"
+    assert "exactly 3" in calls[0]["comment"]
+
+
+@check("shein_challenge: a state read racing SHEIN's own success redirect ('execution context was destroyed', seen live) is treated as navigation, not a failure")
+def _():
+    fake = _FakeChallenge(grid_results=["success"], state_raises_after_success=True)
+    solve, _calls = _grid_solver([[2, 5, 8]])
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=3, solve=solve, step_timeout=2, redirect_timeout=5))
+    assert out.passed, out
+
+
+@check("shein_challenge: gives up after --risk-challenge-rounds, 0 disables it, and a driver error degrades to passed=False instead of raising")
+def _():
+    fake = _FakeChallenge(grid_results=["fail", "fail", "fail"])
+    solve, calls = _grid_solver([[1, 2, 3]] * 3)
+    out = asyncio.run(shein_challenge.pass_risk_challenge(fake, None, max_rounds=2, solve=solve, step_timeout=2))
+    assert not out.passed and len(calls) == 2 and out.rounds == 2, out
+
+    out = asyncio.run(shein_challenge.pass_risk_challenge(_FakeChallenge(grid_results=[]), None, max_rounds=0))
+    assert not out.passed and "disabled" in out.detail
+
+    class Broken(_FakeChallenge):
+        async def screenshot(self, clip):
+            raise RuntimeError("Target closed")
+    solve, _calls = _grid_solver([[1, 2, 3]])
+    out = asyncio.run(shein_challenge.pass_risk_challenge(Broken(grid_results=["success"]), None, max_rounds=2, solve=solve, step_timeout=2))
+    assert not out.passed and "Target closed" in out.detail, out
+
+
+@check("all three engines expose --risk-challenge-rounds (default 5) and call the challenge pass on BOTH the search and product-page paths, before the gateway URL is judged blocked")
+def _():
+    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
+        args = mod.build_arg_parser().parse_args(["--query", "dress"])
+        assert args.risk_challenge_rounds == 5, f"{mod.__name__}: default should be 5"
+        src = (ROOT / f"{mod.__name__}.py").read_text(encoding="utf-8")
+        assert src.count("_maybe_pass_risk_challenge(driver, args, client)" if mod is selenium_scraper
+                         else "await _maybe_pass_risk_challenge(page, args, client)") == 2, (
+            f"{mod.__name__}: expected the challenge pass on both scrape paths"
+        )
+        for block in src.split("_maybe_pass_risk_challenge(")[2:]:
+            assert "RISK_GATEWAY_URL_MARKERS" in block[:400], (
+                f"{mod.__name__}: the gateway-URL blocked check must come right AFTER the challenge pass"
+            )
+
+
+@check("the engines' challenge gate skips cleanly when off the gateway, with --solve-captcha off, or --risk-challenge-rounds 0")
+def _():
+    class Page:
+        url = "https://us.shein.com/pdsearch/dress/"
+
+    class Driver:
+        current_url = "https://us.shein.com/pdsearch/dress/"
+
+    for argv in (["--query", "x"], ["--query", "x", "--solve-captcha", "off"], ["--query", "x", "--risk-challenge-rounds", "0"]):
+        for mod in (playwright_scraper, puppeteer_scraper):
+            args = mod.build_arg_parser().parse_args(argv)
+            page = Page()
+            if argv == ["--query", "x"]:
+                assert asyncio.run(mod._maybe_pass_risk_challenge(page, args, None)) is False
+            page.url = _CHALLENGE_URL
+            if argv != ["--query", "x"]:
+                assert asyncio.run(mod._maybe_pass_risk_challenge(page, args, None)) is False, (mod.__name__, argv)
+        args = selenium_scraper.build_arg_parser().parse_args(argv)
+        d = Driver()
+        if argv != ["--query", "x"]:
+            d.current_url = _CHALLENGE_URL
+        assert selenium_scraper._maybe_pass_risk_challenge(d, args, None) is False, argv
+
+
+_NINE_CAPTCHA_REPLICA = """<!doctype html><html><body>
+<img class="header-content-img" style="display:none" src="data:,">
+<nine-captcha-custom id="nine-captcha-custom"></nine-captcha-custom>
+<script>
+const host = document.getElementById('nine-captcha-custom');
+const root = host.attachShadow({mode: 'open'});
+const pics = Array.from({length: 9}, (_, i) =>
+  `<div class="nine-content-pic" style="width:120px;height:120px;margin:6px;float:left">
+     <img class="nine-content-img" style="width:120px;height:120px;display:block" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=#${i}">
+     <div class="nine-content-select" style="display:none"></div>
+     <div class="nine-content-loading" style="display:none"></div></div>`).join('');
+root.innerHTML = `<div class="sui-dialog risk-nine-dialog__content"><div style="width:480px">
+  <div class="nine-header-content"><div class="nine-header-content-title">Please select all images according to the icon</div>
+  <div class="nine-header-content-img"><img class="header-content-img" style="width:54px;height:54px" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div></div>
+  <div class="nine-content-area"><div class="nine-content" style="width:396px;overflow:hidden">${pics}
+    <div class="nine-success" style="display:none">Verification Success</div>
+    <div class="nine-fail" style="display:none">Authentication failed</div></div>
+  <div class="nine-refresh"><span class="nine-refresh-word">refresh</span></div></div></div></div>`;
+</script></body></html>"""
+
+
+@check("STATE_JS in a REAL headless Chromium against a replica of the live nine_captcha shadow DOM (class names from the 2026-09-30 capture): finds 9 tiles, the VISIBLE icon despite an earlier hidden decoy (the live bug), and each result state; skips if Chromium is unavailable")
+def _():
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return
+
+    async def go():
+        async with async_playwright() as pw:
+            try:
+                browser = await pw.chromium.launch(headless=True)
+            except Exception:
+                return None
+            page = await browser.new_page(viewport={"width": 1280, "height": 800})
+            await page.set_content(_NINE_CAPTCHA_REPLICA)
+            first = await page.evaluate(shein_challenge.STATE_JS)
+            await page.evaluate("() => document.getElementById('nine-captcha-custom').shadowRoot.querySelector('.nine-fail').style.display = 'block'")
+            failed = await page.evaluate(shein_challenge.STATE_JS)
+            await page.set_content('<div><span></span><span>I am human</span></div>')
+            one_pass = await page.evaluate(shein_challenge.STATE_JS)
+            await browser.close()
+            return first, failed, one_pass
+
+    res = asyncio.run(go())
+    if res is None:
+        return
+    first, failed, one_pass = res
+    assert first["stage"] == "nine_captcha" and len(first["tiles"]) == 9, first
+    assert first["icon"] and first["icon"][2] == 54, f"visible icon not found: {first['icon']}"
+    assert first["refresh"] and first["result"] is None and first["loading"] is False
+    assert len(set(first["srcs"])) == 9
+    assert failed["result"] == "fail"
+    assert one_pass["stage"] == "one_pass" and one_pass["checkbox"], one_pass
 
 
 def run() -> int:

@@ -45,6 +45,7 @@ else:
     _PYPPETEER_IMPORT_ERROR = None
 
 import env_config
+import shein_challenge
 import shein_parser as sp
 from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
 from output_writer import EXIT_BAD_USAGE, EXIT_CRASH, EXIT_REMOTE_API_ERROR, Product, finish_run, sku_key as _sku_key
@@ -106,6 +107,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "fresh connect() to the same --cdp-endpoint ws:// URL for the CDP case — whether that "
              "reuses the SAME managed session or gets a new one depends on the provider's own lease "
              "semantics, unconfirmed either way for the Scraping Browser API specifically.",
+    )
+    p.add_argument(
+        "--risk-challenge-rounds", type=int, default=5,
+        help="On SHEIN's own /risk/challenge gateway, click its 'I am human' checkbox and solve up to "
+             "this many rounds of its 3x3 image grid via 2Captcha GridTask (needs TWOCAPTCHA_KEY; the "
+             "checkbox step alone needs no key). 0 disables. Skipped with --solve-captcha off. See "
+             "shein_challenge.py.",
     )
     p.add_argument("--proxy", default=None)
     p.add_argument("--proxy-file", default=None)
@@ -279,6 +287,55 @@ async def _maybe_solve_captcha(
     return result
 
 
+class _PyppeteerChallengeDriver:
+    """shein_challenge.ChallengeDriver over a pyppeteer page."""
+
+    def __init__(self, page):
+        self.page = page
+
+    async def url(self) -> str:
+        return self.page.url
+
+    async def state(self) -> dict:
+        return await self.page.evaluate(shein_challenge.STATE_JS) or {}
+
+    async def screenshot(self, clip: dict) -> bytes:
+        return await self.page.screenshot({"type": "png", "clip": clip})
+
+    async def click(self, x: float, y: float) -> None:
+        mouse = self.page.mouse
+        await mouse.move(x + random.uniform(-60, 60), y + random.uniform(-60, 60), {"steps": random.randint(8, 14)})
+        await mouse.move(x, y, {"steps": random.randint(10, 18)})
+        await asyncio.sleep(random.uniform(0.12, 0.3))
+        await mouse.down()
+        await asyncio.sleep(random.uniform(0.06, 0.13))
+        await mouse.up()
+
+    async def sleep(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
+
+
+def _challenge_debug_dir(args: argparse.Namespace) -> Optional[str]:
+    return str(Path(args.out).with_suffix("")) + "_challenge" if args.dump_html else None
+
+
+async def _maybe_pass_risk_challenge(page, args: argparse.Namespace, client: Optional[TwoCaptchaClient]) -> bool:
+    """True when the page has left SHEIN's /risk/challenge gateway — see
+    playwright_scraper._maybe_pass_risk_challenge."""
+    if not shein_challenge.on_challenge(page.url) or args.solve_captcha == "off" or args.risk_challenge_rounds <= 0:
+        return False
+    outcome = await shein_challenge.pass_risk_challenge(
+        _PyppeteerChallengeDriver(page), client, max_rounds=args.risk_challenge_rounds,
+        debug_dir=_challenge_debug_dir(args),
+    )
+    if outcome.passed:
+        log.info("Passed SHEIN's risk challenge (%s; %d GridTask solve(s)).", outcome.detail, outcome.solves)
+        await asyncio.sleep(READINESS_WAIT_S)
+    else:
+        log.warning("SHEIN risk challenge not passed: %s", outcome.detail)
+    return outcome.passed
+
+
 async def scrape_search(
     *, args: argparse.Namespace, start_url: str,
     proxy_pool: Optional[ProxyPool], client: Optional[TwoCaptchaClient], autosolve: bool = False,
@@ -336,6 +393,8 @@ async def scrape_search(
     # status involved — the current URL is the most direct signal.
     if "/risk/action/limit" in page.url:
         args._rate_limited = True
+    if await _maybe_pass_risk_challenge(page, args, client):
+        status = None
     if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         log.warning("Redirected to SHEIN's own risk gateway (%s) — treating as blocked.", page.url)
         blocked = True
@@ -510,6 +569,8 @@ async def scrape_product_page(
 
     if "/risk/action/limit" in page.url:
         args._rate_limited = True
+    if await _maybe_pass_risk_challenge(page, args, client):
+        status = None
     if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         blocked = True
     if status is not None and status >= 400:

@@ -140,6 +140,25 @@ second one on top is a contradiction, not better cover (same for a
 fingerprint over `--cdp-endpoint`). Comment out whichever you're not
 testing if you want to test them in isolation.
 
+### 6a. The automated `/risk/challenge` pass
+
+Needs a profile SHEIN has NOT verified yet. A verified one skips the
+challenge entirely, so there is nothing to test. Keep `--dump-html` on so
+every round's grid, icon and after-click screenshot lands in
+`/tmp/shein_ch_challenge/`:
+
+```bash
+python3 playwright_scraper.py --query "summer dress" --max-results 10 \
+  --cdp-endpoint "$FRESH_PROFILE_WS" --block-retries 0 --risk-challenge-rounds 4 \
+  --dump-html --out /tmp/shein_ch.json
+```
+
+Look for `Passed SHEIN's risk challenge` in the log and `status=complete`
+in the sidecar. If rounds keep failing, open `roundN_icon.png`: a missing
+icon file means the widget markup changed (see `STATE_JS`). Confirmed
+live for Playwright on 2026-09-30; Selenium and Puppeteer still need this
+run.
+
 ## 7. The residential proxy (`--proxy` / `SHEIN_PROXY`), for real
 
 ```bash

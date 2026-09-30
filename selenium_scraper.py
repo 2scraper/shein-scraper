@@ -27,6 +27,8 @@ restricted environment — see the constant below).
 from __future__ import annotations
 
 import argparse
+import asyncio
+import base64
 import random
 import logging
 import os
@@ -41,16 +43,19 @@ try:
     from selenium.common.exceptions import WebDriverException
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.common.actions.action_builder import ActionBuilder
 except ImportError as _IMPORT_ERROR:  # pragma: no cover — exercised by smoke_test's no-engine path
     webdriver = None
     WebDriverException = Exception
     Options = None
     Service = None
+    ActionBuilder = None
     _SELENIUM_IMPORT_ERROR = _IMPORT_ERROR
 else:
     _SELENIUM_IMPORT_ERROR = None
 
 import env_config
+import shein_challenge
 import shein_parser as sp
 from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
 from output_writer import EXIT_BAD_USAGE, EXIT_CRASH, EXIT_REMOTE_API_ERROR, Product, finish_run, sku_key as _sku_key
@@ -116,6 +121,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "based on). Selenium/chromedriver cannot authenticate a remote --cdp-endpoint at all "
              "(see the error above), so unlike Playwright/Puppeteer this only re-runs against the "
              "same local browser + --proxy exit, not a managed session identity.",
+    )
+    p.add_argument(
+        "--risk-challenge-rounds", type=int, default=5,
+        help="On SHEIN's own /risk/challenge gateway, click its 'I am human' checkbox and solve up to "
+             "this many rounds of its 3x3 image grid via 2Captcha GridTask (needs TWOCAPTCHA_KEY; the "
+             "checkbox step alone needs no key). 0 disables. Skipped with --solve-captcha off. See "
+             "shein_challenge.py.",
     )
     p.add_argument("--proxy", default=None)
     p.add_argument("--proxy-file", default=None)
@@ -304,6 +316,69 @@ def _maybe_solve_captcha(
     return result
 
 
+class _SeleniumChallengeDriver:
+    """shein_challenge.ChallengeDriver over a (sync) Selenium driver —
+    each call is a plain blocking WebDriver call wrapped in a coroutine,
+    run under asyncio.run() by _maybe_pass_risk_challenge. Screenshots use
+    Chrome's own CDP Page.captureScreenshot for its `clip` support (every
+    driver this engine builds is Chrome/Chromium)."""
+
+    def __init__(self, driver):
+        self.driver = driver
+
+    async def url(self) -> str:
+        return self.driver.current_url
+
+    async def state(self) -> dict:
+        return self.driver.execute_script(f"return ({shein_challenge.STATE_JS})();") or {}
+
+    async def screenshot(self, clip: dict) -> bytes:
+        shot = self.driver.execute_cdp_cmd(
+            "Page.captureScreenshot", {"format": "png", "clip": {**clip, "scale": 1}},
+        )
+        return base64.b64decode(shot["data"])
+
+    async def click(self, x: float, y: float) -> None:
+        builder = ActionBuilder(self.driver)
+        pointer = builder.pointer_action
+        pointer.move_to_location(max(0, int(x + random.uniform(-60, 60))), max(0, int(y + random.uniform(-60, 60))))
+        pointer.pause(random.uniform(0.15, 0.3))
+        pointer.move_to_location(int(x), int(y))
+        pointer.pause(random.uniform(0.12, 0.3))
+        pointer.pointer_down()
+        pointer.pause(random.uniform(0.06, 0.13))
+        pointer.pointer_up()
+        builder.perform()
+
+    async def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
+
+
+def _challenge_debug_dir(args: argparse.Namespace) -> Optional[str]:
+    return str(Path(args.out).with_suffix("")) + "_challenge" if args.dump_html else None
+
+
+def _maybe_pass_risk_challenge(driver, args: argparse.Namespace, client: Optional[TwoCaptchaClient]) -> bool:
+    """True when the page has left SHEIN's /risk/challenge gateway — see
+    playwright_scraper._maybe_pass_risk_challenge."""
+    try:
+        current_url = driver.current_url
+    except WebDriverException:
+        return False
+    if not shein_challenge.on_challenge(current_url) or args.solve_captcha == "off" or args.risk_challenge_rounds <= 0:
+        return False
+    outcome = asyncio.run(shein_challenge.pass_risk_challenge(
+        _SeleniumChallengeDriver(driver), client, max_rounds=args.risk_challenge_rounds,
+        debug_dir=_challenge_debug_dir(args),
+    ))
+    if outcome.passed:
+        log.info("Passed SHEIN's risk challenge (%s; %d GridTask solve(s)).", outcome.detail, outcome.solves)
+        time.sleep(READINESS_WAIT_S)
+    else:
+        log.warning("SHEIN risk challenge not passed: %s", outcome.detail)
+    return outcome.passed
+
+
 def scrape_search(
     *, args: argparse.Namespace, start_url: str,
     proxy_pool: Optional[ProxyPool], client: Optional[TwoCaptchaClient],
@@ -360,6 +435,12 @@ def scrape_search(
         current_url = start_url
     if "/risk/action/limit" in current_url:
         args._rate_limited = True
+    if _maybe_pass_risk_challenge(driver, args, client):
+        status = None
+        try:
+            current_url = driver.current_url
+        except WebDriverException:
+            pass
     if any(marker in current_url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         log.warning("Redirected to SHEIN's own risk gateway (%s) — treating as blocked.", current_url)
         blocked = True
@@ -535,6 +616,12 @@ def scrape_product_page(
         current_url = start_url
     if "/risk/action/limit" in current_url:
         args._rate_limited = True
+    if _maybe_pass_risk_challenge(driver, args, client):
+        status = None
+        try:
+            current_url = driver.current_url
+        except WebDriverException:
+            pass
     if any(marker in current_url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         blocked = True
     if status is not None and status >= 400:

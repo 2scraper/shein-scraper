@@ -18,6 +18,21 @@ codes, and family modules as `stockx-scraper` / `skyscanner-scraper` /
 
 ## Read this before trusting a run
 
+**Live update 2026-09-30: the `/risk/challenge` gateway is now passed
+automatically** (`shein_challenge.py`, `--risk-challenge-rounds`, default
+5). SHEIN's own two-step flow is an "I am human" checkbox, then, if the
+server escalates, a 3x3 "select all images according to the icon" grid.
+The scraper clicks the checkbox and solves the grid through a 2Captcha
+`GridTask` (needs `TWOCAPTCHA_KEY`). A Playwright `--cdp-endpoint` run
+from a fresh US profile passed on round 3 and returned 10 products with
+prices, exit `0`. SHEIN sometimes rejects a correct answer
+(`code=9001`), so expect more than one round. **It is not a guaranteed
+pass:** a second fresh profile got `9001` on every submission, including
+correct ones. That is a risk-score rejection nothing on the page can fix;
+switch to another profile. Selenium and Puppeteer use
+the same module but have not been run live yet. With `--dump-html`, each
+round's screenshots are saved under `<out>_challenge/`.
+
 **Live update 2026-09-29:** Playwright completed a real search through a
 US Browser API profile after the user manually passed SHEIN's "I am human"
 step in that profile. The CLI returned `status=complete`, exit `0`, 10
@@ -355,6 +370,13 @@ since these are properties of the drivers, not the site):
 
 ## Known limitations
 
+- **`/risk/challenge` is solved by `shein_challenge.py`, not by
+  `captcha_solver.py`** (2026-09-30). It is SHEIN's own widget, so the
+  generic GeeTest/reCAPTCHA paths below never fire for it. The grid's
+  selectors (`nine-captcha-custom`, `.nine-content-img`,
+  `.header-content-img`, `.nine-success`/`.nine-fail`) are confirmed from
+  one live capture. If SHEIN renames them, the run logs "unrecognised
+  challenge stage" and falls back to the normal blocked outcome (exit 3).
 - **The `/risk/challenge` redirect is the only detection path for its own
   incident** — `shein_parser.BOT_CHALLENGE_MARKERS` (`/risk/challenge`,
   `captcha_type=909`), not `captcha_solver.GENERIC_BOT_CHALLENGE_MARKERS`.

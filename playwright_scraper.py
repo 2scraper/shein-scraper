@@ -52,6 +52,7 @@ else:
     _PLAYWRIGHT_IMPORT_ERROR = None
 
 import env_config
+import shein_challenge
 import shein_parser as sp
 from captcha_solver import CaptchaType, build_injection_script, detect_from_html, solve_when_blocked
 from fingerprint_client import fetch_fingerprint, refuse_if_cdp, user_agent_from
@@ -133,6 +134,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "--cdp-endpoint identity is a separate, manual decision the caller makes between runs, "
              "not something this flag does automatically (see README's 'Known limitations').",
     )
+    p.add_argument(
+        "--risk-challenge-rounds", type=_nonnegative_int, default=5,
+        help="On SHEIN's own /risk/challenge gateway, click its 'I am human' checkbox and solve up to "
+             "this many rounds of its 3x3 image grid via 2Captcha GridTask (needs TWOCAPTCHA_KEY; the "
+             "checkbox step alone needs no key). 0 disables. Skipped with --solve-captcha off. See "
+             "shein_challenge.py.",
+    )
     p.add_argument("--proxy", default=None, help="A single proxy, e.g. http://login:pass@host:port (or set SHEIN_PROXY)")
     p.add_argument("--proxy-file", default=None, help="One proxy per line, same formats as --proxy")
     p.add_argument("--proxy-shuffle", action="store_true")
@@ -204,6 +212,10 @@ def _resolve_start_url(args: argparse.Namespace):
     if args.query or args.category:
         return sp.search_url(query=args.query, category_path=args.category), False
     return None, False
+
+
+def _challenge_debug_dir(args: argparse.Namespace) -> Optional[str]:
+    return str(Path(args.out).with_suffix("")) + "_challenge" if args.dump_html else None
 
 
 def _dump_path(out_path: str) -> str:
@@ -335,6 +347,66 @@ async def _maybe_solve_captcha(
     return result
 
 
+class _PlaywrightChallengeDriver:
+    """shein_challenge.ChallengeDriver over a Playwright page."""
+
+    def __init__(self, page: Page):
+        self.page = page
+        page.on("response", self._on_response)
+
+    def _on_response(self, response) -> None:
+        # SHEIN's verdict on each submission ("code" 0 = accepted, 9001 =
+        # "System error" even for answers verified correct by eye) — the
+        # one signal that separates a wrong answer from a risk rejection.
+        if "/risk/verify/identity/validation/check" in response.url:
+            async def report():
+                try:
+                    body = await response.json()
+                    log.info("SHEIN validation/check: code=%s msg=%s type=%s", body.get("code"), body.get("msg"),
+                             (body.get("info") or {}).get("validate_type"))
+                except Exception:  # noqa: BLE001 — diagnostics only
+                    pass
+            asyncio.ensure_future(report())
+
+    async def url(self) -> str:
+        return self.page.url
+
+    async def state(self) -> dict:
+        return await self.page.evaluate(shein_challenge.STATE_JS) or {}
+
+    async def screenshot(self, clip: dict) -> bytes:
+        return await self.page.screenshot(clip=clip)
+
+    async def click(self, x: float, y: float) -> None:
+        mouse = self.page.mouse
+        await mouse.move(x + random.uniform(-60, 60), y + random.uniform(-60, 60), steps=random.randint(8, 14))
+        await mouse.move(x, y, steps=random.randint(10, 18))
+        await self.page.wait_for_timeout(random.randint(120, 300))
+        await mouse.down()
+        await self.page.wait_for_timeout(random.randint(60, 130))
+        await mouse.up()
+
+    async def sleep(self, seconds: float) -> None:
+        await self.page.wait_for_timeout(int(seconds * 1000))
+
+
+async def _maybe_pass_risk_challenge(page: Page, args: argparse.Namespace, client: Optional[TwoCaptchaClient]) -> bool:
+    """True when the page has left SHEIN's /risk/challenge gateway (it
+    redirects back to the original URL on success)."""
+    if not shein_challenge.on_challenge(page.url) or args.solve_captcha == "off" or args.risk_challenge_rounds <= 0:
+        return False
+    outcome = await shein_challenge.pass_risk_challenge(
+        _PlaywrightChallengeDriver(page), client, max_rounds=args.risk_challenge_rounds,
+        debug_dir=_challenge_debug_dir(args),
+    )
+    if outcome.passed:
+        log.info("Passed SHEIN's risk challenge (%s; %d GridTask solve(s)).", outcome.detail, outcome.solves)
+        await page.wait_for_timeout(READINESS_WAIT_MS)
+    else:
+        log.warning("SHEIN risk challenge not passed: %s", outcome.detail)
+    return outcome.passed
+
+
 async def _connect_over_cdp(pw, cdp_endpoint: str):
     """See every sibling repo's playwright_scraper.py for why this wraps
     the connection error rather than letting it propagate: connect_over_cdp
@@ -408,6 +480,8 @@ async def scrape_search(
     # page's own SSR JSON state).
     if "/risk/action/limit" in page.url:
         args._rate_limited = True
+    if await _maybe_pass_risk_challenge(page, args, client):
+        status = None
     if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         log.warning("Redirected to SHEIN's own risk gateway (%s) — treating as blocked.", page.url)
         blocked = True
@@ -583,6 +657,8 @@ async def scrape_product_page(
 
     if "/risk/action/limit" in page.url:
         args._rate_limited = True
+    if await _maybe_pass_risk_challenge(page, args, client):
+        status = None
     if any(marker in page.url for marker in sp.RISK_GATEWAY_URL_MARKERS):
         blocked = True
     if status is not None and status >= 400:
