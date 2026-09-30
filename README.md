@@ -326,16 +326,28 @@ field shapes above, not a live capture — no full engine run against the
 live site has been made yet (see `TESTING.md`).
 
 **Exit codes**: `0` complete · `1` crash · `2` bad usage · `3` blocked ·
-`4` zero products (and nothing was written) · `5` remote API error · `6`
-partial. Every completed/partial run writes a `<out>.meta.json` sidecar
-with `status`, `pages_completed` (scroll rounds, here), `failed_pages` and
-`price_confirmed_pct` — **except** a failed/empty/blocked/remote-API-error
-run, which writes no sidecar and no output at all, so it can never
-overwrite a previous good run (`--allow-empty` opts out of the "don't
-write an empty result" half of that guard only — see `output_writer.
-finish_run`'s docstring for the exact precedence rule and why products
-being present never launders a blocked/remote-API-error run into
-"complete").
+`4` zero products · `5` remote API error · `6` partial. `3`, `4` and `5`
+mean NO rows: nothing is written, not even a sidecar, so a previous good
+run is never overwritten (`--allow-empty` opts out of that). **Any run
+that has rows but did not finish cleanly is `6` partial**, and the
+sidecar's `stop_reason` says why: `blocked`, `remote_api_error`,
+`failed_pages` or `rejected_rows` (records of an unexpected shape the
+parser skipped; their count is in `rejected_rows`). Until 2026-09-30 such
+a run exited `3`/`5` while writing its rows, so a pipeline keyed on the
+exit code discarded good data (CLAUDE.md §25).
+
+The sidecar also records `max_results`, `capped` (the run hit that cap)
+and `output_sha256` (binding it to the file beside it).
+
+**`diff_runs.py old.json new.json`** compares two `complete` runs by
+`sku`, and refuses a comparison that would lie: two different selections
+(the sidecar URLs differ — another market, query or category; override
+with `--allow-different-scope`), or a sidecar that does not describe its
+file. A currency difference is `currency_changed`, never a price change.
+When either run was capped, a SKU missing from the new one is
+`left_selection` (it fell out of the top N), not `removed`. A product
+page's price is the lowest-priced variant (`price_source:
+json_ld_min_variant`), so reordering variants never reads as a change.
 
 ## Pagination
 

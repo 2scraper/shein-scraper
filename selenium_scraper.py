@@ -494,6 +494,7 @@ def scrape_search(
                 blocked = True
 
         result = sp.safe_parse_search_results(html, max_results=args.max_results, raw_data=raw_data)
+        args._rejected_rows = max(getattr(args, "_rejected_rows", 0), result.rejected_rows)
         if result.source_used == "none" and round_num == 0 and not blocked:
             # Parity fix, added alongside Playwright's own version of this
             # warning — this engine had NO diagnostic here at all before.
@@ -708,6 +709,7 @@ def _scrape_via_scraper_api(
         return products, blocked, False, 0, False
 
     parsed = sp.safe_parse_search_results(html, max_results=args.max_results)
+    args._rejected_rows = max(getattr(args, "_rejected_rows", 0), parsed.rejected_rows)
     if parsed.source_used == "none" and not blocked:
         log.warning(
             "No products recognised in the Scraper API response (%s) — either this search "
@@ -722,6 +724,7 @@ def _scrape_via_scraper_api(
 def run(args: argparse.Namespace) -> int:
     args._rate_limited = False
     args._cooldown_used = False
+    args._rejected_rows = 0
     started_at = time.time()
     start_url, is_product_page = _resolve_start_url(args)
     if not start_url:
@@ -778,7 +781,11 @@ def run(args: argparse.Namespace) -> int:
         blocked = remote_api_error = False
         merged: List[Product] = []
         cdp_fallback_used = False
-        for block_attempt in range(args.block_retries + 1):
+        # A counter, not range(): the one --rate-limit-cooldown retry must not
+        # spend a --block-retries attempt (audit 2026-09-30: with --block-retries 0
+        # the promised retry never ran, because `continue` ended the loop).
+        block_attempt = 0
+        while True:
             merged, blocked, remote_api_error, rounds, scroll_error = _scrape_via_scraper_api(
                 args=args, start_url=start_url, is_product_page=is_product_page, client=client,
                 cdp_url=cdp_url,
@@ -815,19 +822,21 @@ def run(args: argparse.Namespace) -> int:
                 break
             if remote_api_error or not (blocked and not merged):
                 break
-            if block_attempt < args.block_retries:
-                log.warning(
-                    "Blocked with zero products (Scraper API attempt %d/%d) — retrying the same "
-                    "fetch before giving up.",
-                    block_attempt + 1, args.block_retries + 1,
-                )
-                time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
+            if block_attempt >= args.block_retries:
+                break
+            block_attempt += 1
+            log.warning(
+                "Blocked with zero products (Scraper API attempt %d/%d) — retrying the same "
+                "fetch before giving up.",
+                block_attempt, args.block_retries + 1,
+            )
+            time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
         price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
         return finish_run(
             products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
             pages_requested=1, pages_completed=0 if remote_api_error else 1, failed_pages=None,
             blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-            started_at=started_at, price_confirmed_pct=price_confirmed_pct,
+            started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, price_confirmed_pct=price_confirmed_pct,
         )
 
     if args.cdp_endpoint and _cdp_endpoint_has_credentials(args.cdp_endpoint):
@@ -872,7 +881,11 @@ def run(args: argparse.Namespace) -> int:
         # "Retry before you rotate" — see playwright_scraper.py's own copy of
         # this comment and --block-retries' help text for the sibling-repo
         # evidence this is based on.
-        for block_attempt in range(args.block_retries + 1):
+        # A counter, not range(): the one --rate-limit-cooldown retry must not
+        # spend a --block-retries attempt (audit 2026-09-30: with --block-retries 0
+        # the promised retry never ran, because `continue` ended the loop).
+        block_attempt = 0
+        while True:
             merged, blocked, remote_api_error, rounds, scroll_error = scrape_fn(
                 args=args, start_url=start_url, proxy_pool=proxy_pool, client=client, user_agent=user_agent,
             )
@@ -893,12 +906,14 @@ def run(args: argparse.Namespace) -> int:
                 break
             if not (blocked and not merged):
                 break
-            if block_attempt < args.block_retries:
-                log.warning(
-                    "Blocked with zero products (attempt %d/%d) — retrying before giving up.",
-                    block_attempt + 1, args.block_retries + 1,
-                )
-                time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
+            if block_attempt >= args.block_retries:
+                break
+            block_attempt += 1
+            log.warning(
+                "Blocked with zero products (attempt %d/%d) — retrying before giving up.",
+                block_attempt, args.block_retries + 1,
+            )
+            time.sleep(_jittered_delay(args.retry_delay, args.delay_jitter))
         price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
     except Exception:
         log.exception("Unhandled error — this is a crash, not a normal blocked/empty run")
@@ -911,7 +926,7 @@ def run(args: argparse.Namespace) -> int:
         products=merged, out_path=args.out, fmt=args.format, engine=ENGINE_NAME, url=start_url,
         pages_requested=args.max_scrolls, pages_completed=completed_rounds, failed_pages=failed_pages,
         blocked=blocked, remote_api_error=remote_api_error, allow_empty=args.allow_empty,
-        started_at=started_at, price_confirmed_pct=price_confirmed_pct,
+        started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results, price_confirmed_pct=price_confirmed_pct,
     )
 
 

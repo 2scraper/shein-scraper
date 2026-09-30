@@ -37,6 +37,7 @@ py-modules = [
     "scraper_api_client",
     "diff_runs",
     "shein_parser",
+    "shein_challenge",
     "playwright_scraper",
     "selenium_scraper",
     "puppeteer_scraper",

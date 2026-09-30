@@ -655,6 +655,10 @@ class SearchResult:
     products: List[Product] = field(default_factory=list)
     total_available: Optional[int] = None
     source_used: str = "none"  # "gb_raw_data" | "json_ld" | "dom" | "none"
+    # Records the parser refused, and why (first few) — the run is then
+    # incomplete, which the engines report as partial (see finish_run).
+    rejected_rows: int = 0
+    rejected_reasons: List[str] = field(default_factory=list)
 
 
 def parse_search_results(html: str, *, max_results: int, raw_data: Optional[dict] = None) -> SearchResult:
@@ -675,12 +679,27 @@ def parse_search_results(html: str, *, max_results: int, raw_data: Optional[dict
             if total is None:
                 total = bpi.get("result_count")
             products = []
-            for raw in raw_products[:max_results]:
-                p = _gb_product_to_product(raw, currency=currency)
+            rejected, reasons = 0, []
+            # One record at a time: a single record of an unexpected shape
+            # used to raise out of the whole loop and discard every good row
+            # (audit 2026-09-30: 10 products -> 0, exit 4, from one string
+            # salePrice).
+            for index, raw in enumerate(raw_products[:max_results]):
+                try:
+                    p = _gb_product_to_product(raw, currency=currency)
+                except (AttributeError, TypeError, ValueError, KeyError) as exc:
+                    rejected += 1
+                    if len(reasons) < 5:
+                        reasons.append(f"record {index}: {type(exc).__name__}: {exc}")
+                    continue
                 if p:
                     products.append(p)
+            if rejected:
+                log.warning("window.gbRawData: %d record(s) of an unexpected shape were skipped: %s",
+                            rejected, "; ".join(reasons))
             if products:
-                return SearchResult(products=products, total_available=total, source_used="gb_raw_data")
+                return SearchResult(products=products, total_available=total, source_used="gb_raw_data",
+                                    rejected_rows=rejected, rejected_reasons=reasons)
         except (AttributeError, TypeError) as exc:
             log.warning("window.gbRawData present but did not match the expected shape: %s", exc)
 
@@ -724,48 +743,116 @@ def count_result_cards(html: str) -> int:
 # Product/ItemList JSON-LD at all)
 # --------------------------------------------------------------------------- #
 def extract_json_ld(html: str) -> List[dict]:
+    """Every JSON-LD node on the page, with `@graph` arrays flattened and
+    non-dict entries dropped (CLAUDE.md §4's legal-but-hostile shapes)."""
     soup = BeautifulSoup(html, "html.parser")
-    out = []
+    out: List[dict] = []
+
+    def add(item: Any) -> None:
+        if isinstance(item, list):
+            for x in item:
+                add(x)
+        elif isinstance(item, dict):
+            if isinstance(item.get("@graph"), list):
+                add(item["@graph"])
+            else:
+                out.append(item)
+
     for tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
         try:
-            data = json.loads(tag.string or "{}")
+            add(json.loads(tag.string or "{}"))
         except (json.JSONDecodeError, TypeError):
             continue
-        out.extend(data if isinstance(data, list) else [data])
     return out
 
 
+def _types(node: dict) -> set:
+    t = node.get("@type")
+    return set(t) if isinstance(t, list) else {t}
+
+
 def _find_product_group_node(nodes: List[dict]) -> Optional[dict]:
-    for node in nodes:
-        if node.get("@type") in ("ProductGroup", "Product"):
-            return node
+    """A ProductGroup wins over a bare Product: the group is the page's
+    subject, a Product may be one of its variants listed separately."""
+    for wanted in ("ProductGroup", "Product"):
+        for node in nodes:
+            if wanted in _types(node):
+                return node
     return None
 
 
+def _offers(node: dict) -> List[dict]:
+    """`offers` as null, one Offer, an AggregateOffer or a list — always a
+    list of dicts."""
+    raw = node.get("offers")
+    items = raw if isinstance(raw, list) else [raw]
+    return [o for o in items if isinstance(o, dict)]
+
+
+def _offer_price(offer: dict) -> Optional[float]:
+    for key in ("price", "lowPrice"):
+        value = offer.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _image_url(value: Any) -> Optional[str]:
+    """str, ImageObject, or a list of either."""
+    if isinstance(value, list):
+        return next((u for u in (_image_url(v) for v in value) if u), None)
+    if isinstance(value, dict):
+        u = value.get("url") or value.get("contentUrl")
+        return u if isinstance(u, str) else None
+    return value if isinstance(value, str) and value else None
+
+
+def _brand_name(value: Any) -> Optional[str]:
+    if isinstance(value, dict):
+        value = value.get("name")
+    return value if isinstance(value, str) and value else None
+
+
 def _json_ld_node_to_product(node: dict, *, url: str) -> Optional[Product]:
-    variants = node.get("hasVariant") or [node] if node.get("@type") == "ProductGroup" else [node]
-    first_offer_variant = next((v for v in variants if v.get("offers")), variants[0] if variants else {})
-    offer = first_offer_variant.get("offers") or {}
-    price = None
-    try:
-        price = float(offer["price"]) if offer.get("price") not in (None, "") else None
-    except (TypeError, ValueError):
-        pass
-    images = node.get("image") or []
-    image_url = images[0] if isinstance(images, list) and images else (images if isinstance(images, str) else None)
+    """Price policy (audit 2026-09-30): a ProductGroup's price is the LOWEST
+    priced variant, never "the first one listed" — variant order is not a
+    price, and reordering S=10/M=20 used to flip the row's price with no
+    price change on the site. `price_source` says which rule produced the
+    number: `json_ld` (one offer) or `json_ld_min_variant` (several)."""
+    if "ProductGroup" in _types(node):
+        variants = [v for v in node.get("hasVariant") or [] if isinstance(v, dict)] or [node]
+    else:
+        variants = [node]
+    priced = []
+    for v in variants:
+        for offer in _offers(v):
+            price = _offer_price(offer)
+            if price is not None:
+                priced.append((price, offer))
+    price, currency, price_source = None, None, "json_ld"
+    if priced:
+        price, offer = min(priced, key=lambda po: po[0])
+        currency = offer.get("priceCurrency") if isinstance(offer.get("priceCurrency"), str) else None
+        if len({p for p, _ in priced}) > 1:
+            price_source = "json_ld_min_variant"
     goods_id_match = re.search(r"-p-(\d+)\.html", url)
     goods_id = goods_id_match.group(1) if goods_id_match else None
+    node_url = node.get("url") if isinstance(node.get("url"), str) else None
     return Product(
         sku=make_sku(goods_id, url),
         source=SOURCE,
         category=None,  # not present on the ProductGroup node itself — see BreadcrumbList for category, unused here
-        title=node.get("name"),
-        brand=(node.get("brand") or {}).get("name"),
+        title=node.get("name") if isinstance(node.get("name"), str) else None,
+        brand=_brand_name(node.get("brand")),
         price=price,
-        currency=offer.get("priceCurrency"),
-        price_source="json_ld",
-        product_url=node.get("url") or url,
-        image_url=image_url,
+        currency=currency,
+        price_source=price_source,
+        product_url=node_url or url,
+        image_url=_image_url(node.get("image")) or next((u for u in (_image_url(v.get("image")) for v in variants) if u), None),
         scraped_at=_now_iso(),
     )
 

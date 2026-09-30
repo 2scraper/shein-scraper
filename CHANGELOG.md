@@ -9,6 +9,64 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Fixed — 2026-09-30, third-party audit (7 findings, all reproduced first)
+> **Behaviour change for pipelines:** a run that has rows but did not
+> finish cleanly now exits `6` (partial) with the cause in `stop_reason`.
+> It used to exit `3` or `5` while writing the rows.
+
+Each finding was reproduced on the audited commit (`b4e9de7`) before
+work began (a failing snippet per finding), and each fix has a check that
+was confirmed RED against the old code:
+
+1. **The wheel and the Docker image lacked `shein_challenge.py`**: every
+   install failed on import. Added to `pyproject.toml` and the Dockerfile.
+   `smoke_test.py` now asserts every top-level module is in both, and CI
+   builds the wheel and imports every module from it outside the checkout.
+   Verified locally: 13/13 modules import from the built wheel.
+2. **One malformed record discarded the whole batch.** A single string
+   `salePrice` in the real 2026-09-21 capture turned 10 products into 0
+   (exit 4). Records are now parsed one at a time; the bad one is counted
+   (`rejected_rows`, reasons logged) and the run is `partial`. Real
+   fixture: 9 rows kept, 1 rejected.
+3. **`diff_runs` compared incompatible runs.** "dress" at 9.93 USD vs
+   "jeans" at 19.93 EUR was a price change; the same number in another
+   currency was not reported at all. Different selections are now
+   refused, currency differences are `currency_changed`, a capped run's
+   missing SKUs are `left_selection`, and `output_sha256` binds each
+   sidecar to its file.
+4. **A ProductGroup's price followed variant order.** Reordering S=10/M=20
+   flipped the price. It is now the lowest variant price,
+   `price_source=json_ld_min_variant` when variants differ. An existing
+   product-page row whose variants differ in price will show ONE
+   `source_changed` entry in the next diff.
+5. **JSON-LD shapes crashed or were missed**: `offers` as a list/null/
+   AggregateOffer, `brand` as a string, Product inside `@graph`,
+   `ImageObject` images. All normalized (CLAUDE.md §4's table).
+6. **The promised `--rate-limit-cooldown` retry did not run on the last
+   attempt**: `continue` on the final `range()` iteration ended the loop
+   (with `--block-retries 0`, zero retries). The six loops now use a
+   counter, and the cooldown retry never spends a block retry. A
+   behavioural test drives all three engines' `run()`.
+7. **Rows plus a fetch failure exited `5`/`3` and wrote the file**,
+   contradicting §25. Now `partial` (see the note above). The pinned test
+   stating the old position was rewritten in the same change, as §25 asks.
+
+Also: `smoke_test.check()` now records a `SystemExit` raised inside a
+check as that check's failure. Before, one CLI helper exiting inside a
+check ended the whole suite with no summary line (found while writing
+check 3).
+
+**Not changed, deliberately** (the audit's architecture section):
+- the fetch/retry/scroll loop is still one copy per engine. Moving it into
+  a shared `page_flow` (CLAUDE.md §26) is the right next step, but the
+  audit itself recommends doing it after behaviour is pinned by checks,
+  which this batch did;
+- no global solve budget across a run yet (per-pass `--risk-challenge-rounds`
+  only);
+- no per-variant rows: one row per product page stays, with an explicit
+  price rule;
+- the live validation matrix (direct / proxy / CDP) was not re-run here.
+
 ### Added — 2026-09-30, third challenge widget (`icon_click`), plus the first live Selenium and Puppeteer runs
 - **Puppeteer, live over `--cdp-endpoint`**: connected and scraped 10
   products, `status=complete`. That profile was already verified, so the

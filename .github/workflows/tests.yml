@@ -22,6 +22,19 @@ jobs:
         run: python -m compileall -q .
       - name: Run the offline smoke suite
         run: python3 smoke_test.py
+      # The shipped artefact, not the checkout: a module missing from
+      # pyproject's py-modules imports fine here and breaks every install
+      # (audit 2026-09-30: the wheel lacked shein_challenge).
+      - name: The wheel imports every module outside the checkout
+        run: |
+          pip install build
+          python -m build --wheel --outdir /tmp/wheel .
+          python -m venv /tmp/wheelenv
+          /tmp/wheelenv/bin/pip install /tmp/wheel/*.whl
+          cd /tmp
+          for m in $(python -c "import pathlib; print(' '.join(p.stem for p in pathlib.Path('$GITHUB_WORKSPACE').glob('*.py')))"); do
+            /tmp/wheelenv/bin/python -c "import $m" || { echo "::error::$m does not import from the wheel"; exit 1; }
+          done
       - name: --help works for every CLI
         run: |
           for engine in playwright_scraper selenium_scraper puppeteer_scraper; do

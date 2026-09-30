@@ -72,6 +72,8 @@ def check(name):
             RESULTS.append((name, False, str(exc)))
         except Exception as exc:  # a check that crashes is still a failure, not an uncaught traceback
             RESULTS.append((name, False, f"{type(exc).__name__}: {exc}"))
+        except SystemExit as exc:  # a CLI helper exiting inside a check would otherwise end the whole suite silently
+            RESULTS.append((name, False, f"SystemExit: {exc}"))
         return fn
     return decorator
 
@@ -195,19 +197,36 @@ def _mk_product(sku, price=16.29, **kw):
     return output_writer.Product(**defaults)
 
 
-@check("finish_run precedence: remote_api_error status is never laundered into 'complete' just because products were present")
+@check("finish_run: rows gathered by a run that did not finish are PARTIAL (6) with the cause in stop_reason — never 5/3 with a file (CLAUDE.md §25; audit 2026-09-30 got exit 5 AND a written file). Rewrites the old pinned 'exit 5 with products' position deliberately.")
 def _():
+    cases = (
+        (dict(blocked=True, remote_api_error=True), "remote_api_error"),
+        (dict(blocked=False, remote_api_error=True), "remote_api_error"),
+        (dict(blocked=True, remote_api_error=False), "blocked"),
+        (dict(blocked=False, remote_api_error=False, failed_pages=[3]), "failed_pages"),
+        (dict(blocked=False, remote_api_error=False, rejected_rows=2), "rejected_rows"),
+    )
+    for kw, reason in cases:
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "out.json")
+            kw = {"failed_pages": None, **kw}
+            code = output_writer.finish_run(
+                products=[_mk_product("1")], out_path=out, fmt="json", engine="test", url="u",
+                pages_requested=3, pages_completed=2, allow_empty=False, started_at=0.0, **kw,
+            )
+            assert code == output_writer.EXIT_PARTIAL, (kw, code)
+            assert Path(out).exists(), "already-collected products must still be written out"
+            meta = json.loads(Path(f"{out}.meta.json").read_text())
+            assert meta["status"] == "partial" and meta["stop_reason"] == reason, (kw, meta)
+            if reason == "rejected_rows":
+                assert meta["rejected_rows"] == 2
     with tempfile.TemporaryDirectory() as td:
-        out = str(Path(td) / "out.json")
+        out = str(Path(td) / "z.json")
         code = output_writer.finish_run(
-            products=[_mk_product("1")], out_path=out, fmt="json", engine="test", url="u",
-            pages_requested=1, pages_completed=1, failed_pages=None,
-            blocked=True, remote_api_error=True, allow_empty=True, started_at=0.0,
+            products=[], out_path=out, fmt="json", engine="test", url="u", pages_requested=1, pages_completed=0,
+            failed_pages=None, blocked=False, remote_api_error=True, allow_empty=False, started_at=0.0,
         )
-        assert code == output_writer.EXIT_REMOTE_API_ERROR
-        assert Path(out).exists(), "already-collected products must still be written out"
-        meta = json.loads(Path(f"{out}.meta.json").read_text())
-        assert meta["status"] == "remote_api_error", meta["status"]
+        assert code == output_writer.EXIT_REMOTE_API_ERROR and not Path(out).exists(), "5 promises no file"
 
 
 @check("finish_run precedence: blocked+zero-products respects --allow-empty for WHETHER to write, never for the STATUS")
@@ -2152,6 +2171,141 @@ def _():
     assert icon_click["stage"] == "icon_click", icon_click
     assert [round(v) for v in icon_click["image"][2:]] == [286, 286] and round(icon_click["icons"][3]) == 30, icon_click
     assert icon_click["confirm"] and icon_click["refresh"] and icon_click["loaded"] is True, icon_click
+
+
+@check("every top-level module is in the Dockerfile COPY and pyproject py-modules (audit 2026-09-30: the wheel and image lacked shein_challenge, so every install failed on import)")
+def _():
+    import re as _re
+    docker = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    listed = set(_re.findall(r'"([a-z_]+)"', pyproject.split("py-modules", 1)[1].split("]", 1)[0]))
+    for mod in sorted(pth.stem for pth in ROOT.glob("*.py")):
+        assert f"{mod}.py" in docker, f"{mod}.py missing from the Dockerfile COPY"
+        assert mod in listed, f"{mod} missing from pyproject py-modules"
+
+
+@check("BEHAVIORAL: the one --rate-limit-cooldown retry runs even with --block-retries 0 (audit 2026-09-30: `continue` on the last range() iteration ended the loop, so the promised retry never happened), is still only ONE retry, and never spends a --block-retries attempt — all three engines, driven through run()")
+def _():
+    rate_limited = "<html><body>redirected to /risk/action/limit</body></html>"
+    original = scraper_api_client.TwoCaptchaClient.scrape_url
+    for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
+        for bodies, expected_calls, expected_rc in (
+            ([rate_limited, _SEARCH_PAGE_HTML], 2, output_writer.EXIT_OK),
+            ([rate_limited, rate_limited, _SEARCH_PAGE_HTML], 2, None),
+        ):
+            calls = []
+
+            def fake(self, url, *, data_format="raw", timeout=60, wait_for=None, cdp_url=None, _b=bodies):
+                calls.append(url)
+                return scraper_api_client.ScrapeResult(target_status=200, headers={}, body=_b[min(len(calls), len(_b)) - 1])
+
+            scraper_api_client.TwoCaptchaClient.scrape_url = fake
+            try:
+                with tempfile.TemporaryDirectory() as td:
+                    args = mod.build_arg_parser().parse_args([
+                        "--query", "dress", "--twocaptcha-key", "fake-key-for-test-only", "--scraper-api",
+                        "--block-retries", "0", "--rate-limit-cooldown", "0.001", "--delay-jitter", "0",
+                        "--out", str(Path(td) / "o.json"),
+                    ])
+                    rc = asyncio_run_maybe(mod, args)
+            finally:
+                scraper_api_client.TwoCaptchaClient.scrape_url = original
+            assert len(calls) == expected_calls, f"{mod.__name__}: {len(calls)} scrape calls for {len(bodies)} bodies"
+            if expected_rc is not None:
+                assert rc == expected_rc, f"{mod.__name__}: rc {rc}"
+            else:
+                assert rc != output_writer.EXIT_OK, f"{mod.__name__}: a second rate limit must not be retried again"
+
+
+def _real_gb():
+    return json.loads((ROOT / "tests" / "fixtures" / "shein_search_live_dress_20260921.json").read_text(encoding="utf-8"))
+
+
+@check("one malformed record in the REAL gbRawData keeps the other nine and is counted (audit 2026-09-30: a string salePrice on record 2 turned 10 products into 0, exit 4)")
+def _():
+    import copy as _copy
+    data = _copy.deepcopy(_real_gb())
+    data["results"]["bffProductsInfo"]["products"][1]["salePrice"] = "9.99"
+    res = sp.parse_search_results("", max_results=10, raw_data=data)
+    assert res.source_used == "gb_raw_data" and len(res.products) == 9, (res.source_used, len(res.products))
+    assert res.rejected_rows == 1 and "record 1" in res.rejected_reasons[0]
+    clean = sp.parse_search_results("", max_results=10, raw_data=_real_gb())
+    assert clean.rejected_rows == 0 and len(clean.products) == 10
+
+
+def _ld_page(node):
+    return f'<script type="application/ld+json">{json.dumps(node)}</script>'
+
+
+@check("a ProductGroup's price is the LOWEST variant price whatever the variant order, marked price_source=json_ld_min_variant (audit 2026-09-30: S=10/M=20 reordered flipped the price with no change on the site)")
+def _():
+    v = [{"@type": "Product", "offers": {"price": "10", "priceCurrency": "USD"}},
+         {"@type": "Product", "offers": {"price": "20", "priceCurrency": "USD"}}]
+    a = sp.parse_product_page(_ld_page({"@type": "ProductGroup", "name": "X", "hasVariant": v}), url="https://us.shein.com/x-p-1.html")
+    b = sp.parse_product_page(_ld_page({"@type": "ProductGroup", "name": "X", "hasVariant": v[::-1]}), url="https://us.shein.com/x-p-1.html")
+    assert a.price == b.price == 10.0 and a.currency == "USD", (a.price, b.price)
+    assert a.price_source == b.price_source == "json_ld_min_variant"
+    one = sp.parse_product_page(_ld_page({"@type": "Product", "name": "Y", "offers": {"price": "7"}}), url="https://us.shein.com/y-p-2.html")
+    assert one.price == 7.0 and one.price_source == "json_ld"
+
+
+@check("JSON-LD shapes that are legal and broke the parser (CLAUDE.md §4; audit 2026-09-30): offers list/null/AggregateOffer, brand as a string, Product inside @graph, ImageObject — none crash, each reads the right value")
+def _():
+    u = "https://us.shein.com/z-p-3.html"
+    p = sp.parse_product_page(_ld_page({"@type": "Product", "name": "A", "offers": [None, {"price": "5", "priceCurrency": "USD"}]}), url=u)
+    assert (p.price, p.currency) == (5.0, "USD")
+    p = sp.parse_product_page(_ld_page({"@type": "Product", "name": "A", "brand": "SHEIN", "offers": None}), url=u)
+    assert p.brand == "SHEIN" and p.price is None
+    p = sp.parse_product_page(_ld_page({"@graph": [{"@type": "BreadcrumbList"}, {"@type": "Product", "name": "G", "offers": {"price": "7"}}]}), url=u)
+    assert p is not None and p.title == "G" and p.price == 7.0
+    p = sp.parse_product_page(_ld_page({"@type": ["Product"], "name": "A", "image": [{"@type": "ImageObject", "contentUrl": "https://i/x.jpg"}],
+                                        "offers": {"@type": "AggregateOffer", "lowPrice": "3.5"}}), url=u)
+    assert p.image_url == "https://i/x.jpg" and p.price == 3.5
+
+
+def _diff_run(td, name, rows, url, **kw):
+    out = str(Path(td) / name)
+    kw.setdefault("allow_empty", False)
+    output_writer.finish_run(products=rows, out_path=out, fmt="json", engine="t", url=url, pages_requested=1,
+                             pages_completed=1, failed_pages=None, blocked=False, remote_api_error=False,
+                             started_at=0.0, **kw)
+    return out
+
+
+@check("diff_runs refuses different selections, never calls a currency switch a price change (even at the same number), reads a capped top-N's missing SKU as left_selection, and rejects a sidecar that does not describe its file (audit 2026-09-30)")
+def _():
+    dress, jeans = "https://us.shein.com/pdsearch/dress/", "https://us.shein.com/pdsearch/jeans/"
+    with tempfile.TemporaryDirectory() as td:
+        a = _diff_run(td, "a.json", [_mk_product("s1", 9.93, currency="USD")], dress)
+        b = _diff_run(td, "b.json", [_mk_product("s1", 19.93, currency="EUR")], jeans)
+        try:
+            diff_runs.diff(a, b)
+            raise AssertionError("different selections must be refused")
+        except SystemExit as exc:
+            assert "different selections" in str(exc)
+        r = diff_runs.diff(a, b, allow_different_scope=True)
+        assert not r["changed"] and len(r["currency_changed"]) == 1
+
+        c = _diff_run(td, "c.json", [_mk_product("s1", 10.0, currency="USD")], dress)
+        e = _diff_run(td, "e.json", [_mk_product("s1", 10.0, currency="EUR")], dress + "?")
+        r = diff_runs.diff(c, e)
+        assert r["currency_changed"] and not r["changed"], "same number, other currency must still be reported"
+
+        f = _diff_run(td, "f.json", [_mk_product("s1"), _mk_product("s2")], dress, max_results=2)
+        g = _diff_run(td, "g.json", [_mk_product("s1"), _mk_product("s3")], dress, max_results=2)
+        r = diff_runs.diff(f, g)
+        assert r["capped"] and r["left_selection"] == ["s2"] and r["removed"] == [] and r["added"] == ["s3"]
+        h = _diff_run(td, "h.json", [_mk_product("s1"), _mk_product("s2")], dress, max_results=50)
+        i = _diff_run(td, "i.json", [_mk_product("s1")], dress, max_results=50)
+        r = diff_runs.diff(h, i)
+        assert r["removed"] == ["s2"] and not r["capped"], "an uncapped run's missing SKU really is removed"
+
+        Path(g).write_text("[]", encoding="utf-8")
+        try:
+            diff_runs.diff(f, g)
+            raise AssertionError("a sidecar whose hash does not match must be refused")
+        except SystemExit as exc:
+            assert "output_sha256" in str(exc)
 
 
 def run() -> int:

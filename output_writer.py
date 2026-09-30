@@ -17,6 +17,7 @@ family-common fields) differs per repo.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import time
 from dataclasses import asdict, dataclass, field, fields
@@ -240,6 +241,8 @@ def finish_run(
     started_at: float,
     price_confirmed_pct: Optional[float] = None,
     extra_meta: Optional[dict] = None,
+    rejected_rows: int = 0,
+    max_results: Optional[int] = None,
 ) -> int:
     """Decide status/exit code, write output + sidecar (or neither), return
     the process exit code. NEVER writes a sidecar for a failed run, and
@@ -256,16 +259,28 @@ def finish_run(
     # caller also passed --allow-empty, and it must never do so just
     # because SOME batches did return results while the run was, in fact,
     # blocked partway through.
-    if remote_api_error:
-        status, exit_code = "remote_api_error", EXIT_REMOTE_API_ERROR
-    elif blocked:
-        status, exit_code = "blocked", EXIT_BLOCKED
-    elif zero_products:
-        status, exit_code = "empty", EXIT_ZERO_PRODUCTS
-    elif partial:
+    #
+    # Rows gathered by a run that did NOT finish cleanly are `partial` (6),
+    # with the cause in `stop_reason` (CLAUDE.md §25: exit 5 and exit 3
+    # promise no file; 6 means "some rows, incomplete"). Audit 2026-09-30:
+    # this used to return 5 or 3 AND write the rows, so a consumer keyed on
+    # the exit code threw away good data. `rejected_rows` counts records
+    # the parser refused — the output is then incomplete too.
+    if zero_products:
+        if remote_api_error:
+            status, exit_code = "remote_api_error", EXIT_REMOTE_API_ERROR
+        elif blocked:
+            status, exit_code = "blocked", EXIT_BLOCKED
+        else:
+            status, exit_code = "empty", EXIT_ZERO_PRODUCTS
+        stop_reason = status
+    elif remote_api_error or blocked or partial or rejected_rows:
         status, exit_code = "partial", EXIT_PARTIAL
+        stop_reason = ("remote_api_error" if remote_api_error else "blocked" if blocked
+                       else "failed_pages" if partial else "rejected_rows")
     else:
         status, exit_code = "complete", EXIT_OK
+        stop_reason = status
 
     # The "never overwrite good output with empty" rule: a zero-product
     # outcome (whatever its status above — blocked/remote_api_error/empty
@@ -280,11 +295,22 @@ def finish_run(
         return exit_code
 
     write_output(products, out_path, fmt)
+    extra = dict(extra_meta or {})
+    if rejected_rows:
+        extra["rejected_rows"] = rejected_rows
+    # What diff_runs needs to refuse a meaningless comparison: the cap the
+    # run was given (a top-N selection, where "removed" means "fell out of
+    # the top N", not "delisted") and a hash binding this sidecar to the
+    # exact output file beside it.
+    if max_results is not None:
+        extra["max_results"] = max_results
+        extra["capped"] = len(products) >= max_results
+    extra["output_sha256"] = hashlib.sha256(Path(out_path).read_bytes()).hexdigest()
     write_meta(
-        out_path, status=status, stop_reason=status, engine=engine, url=url,
+        out_path, status=status, stop_reason=stop_reason, engine=engine, url=url,
         pages_requested=pages_requested, pages_completed=pages_completed,
         failed_pages=failed_pages, product_count=len(products),
         price_confirmed_pct=price_confirmed_pct, started_at=started_at,
-        extra=extra_meta,
+        extra=extra or None,
     )
     return exit_code
