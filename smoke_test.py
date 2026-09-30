@@ -1870,6 +1870,8 @@ def _():
 @check("every top-level module is in the Dockerfile COPY and pyproject py-modules (audit 2026-09-30: the wheel and image lacked shein_challenge, so every install failed on import)")
 def _():
     import re as _re
+    if not (ROOT / "Dockerfile").exists() and not (ROOT / "pyproject.toml").exists():
+        return  # the Docker image's own copy of this suite ships neither (CLAUDE.md §22)
     docker = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     listed = set(_re.findall(r'"([a-z_]+)"', pyproject.split("py-modules", 1)[1].split("]", 1)[0]))
@@ -2053,6 +2055,8 @@ def _():
 @check("no workflow imports a local module inline — tests.yml calls ci_checks.py instead (CLAUDE.md §26: an inline heredoc import is red only on the first push)")
 def _():
     import re as _re
+    if not (ROOT / ".github").is_dir():
+        return  # the Docker image ships no .github/ (CLAUDE.md §22)
     local = {p.stem for p in ROOT.glob("*.py")}
     for wf in (ROOT / ".github" / "workflows").glob("*.yml"):
         text = wf.read_text(encoding="utf-8")
