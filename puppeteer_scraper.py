@@ -64,11 +64,11 @@ log = logging.getLogger("puppeteer_scraper")
 _CHROMIUM_EXECUTABLE = os.environ.get("PYPPETEER_EXECUTABLE_PATH") or os.environ.get("PUPPETEER_EXECUTABLE_PATH")
 
 
-def _positive_int(value: str) -> int:
-    ivalue = int(value)
-    if ivalue < 1:
-        raise argparse.ArgumentTypeError(f"must be a positive integer (got {value!r})")
-    return ivalue
+# One definition of each numeric flag type, shared by all three engines so
+# their parsers cannot disagree about what a negative value means.
+_positive_int = page_flow.positive_int
+_nonnegative_int = page_flow.nonnegative_int
+_nonnegative_float = page_flow.nonnegative_float
 
 
 def _budget(args) -> "shein_challenge.SolveBudget":
@@ -94,43 +94,43 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-results", type=_positive_int, default=30)
     p.add_argument("--max-scrolls", type=_positive_int, default=20)
     p.add_argument("--stall-rounds", type=_positive_int, default=4)
-    p.add_argument("--scroll-delay", type=float, default=1.5)
+    p.add_argument("--scroll-delay", type=_nonnegative_float, default=1.5)
     p.add_argument("--format", choices=["json", "csv"], default="json")
     p.add_argument("--out", default=None)
-    p.add_argument("--retries", type=int, default=2)
-    p.add_argument("--retry-delay", type=float, default=3.0)
-    p.add_argument("--delay-jitter", type=float, default=0.3, help="Relative +/-jitter applied to --scroll-delay/--retry-delay/--rate-limit-cooldown so repeated waits are not perfectly periodic (0 disables, e.g. for reproducible tests)")
-    p.add_argument("--rate-limit-cooldown", type=float, default=0.0, help="After SHEIN's rate limit (/risk/action/limit), wait this many seconds and retry once on the same session (0 = off; e.g. 300 for scheduled runs)")
+    p.add_argument("--retries", type=_nonnegative_int, default=2)
+    p.add_argument("--retry-delay", type=_nonnegative_float, default=3.0)
+    p.add_argument("--delay-jitter", type=_nonnegative_float, default=0.3, help="Relative +/-jitter applied to --scroll-delay/--retry-delay/--rate-limit-cooldown so repeated waits are not perfectly periodic (0 disables, e.g. for reproducible tests)")
+    p.add_argument("--rate-limit-cooldown", type=_nonnegative_float, default=0.0, help="After SHEIN's rate limit (/risk/action/limit), wait this many seconds and retry once on the same session (0 = off; e.g. 300 for scheduled runs)")
     p.add_argument(
-        "--block-retries", type=int, default=2,
+        "--block-retries", type=_nonnegative_int, default=2,
         help='Retries on the SAME browser session after a blocked page with no products, before giving up (a different proxy/profile is your call between runs)',
     )
     p.add_argument(
-        "--risk-challenge-rounds", type=int, default=5,
+        "--risk-challenge-rounds", type=_nonnegative_int, default=5,
         help="Puzzle rounds per SHEIN /risk/challenge: the 'I am human' checkbox is free; the image grid and icon puzzle are solved via 2Captcha (needs TWOCAPTCHA_KEY). 0 = don't solve",
     )
     p.add_argument(
-        "--max-solves", type=int, default=8,
+        "--max-solves", type=_nonnegative_int, default=8,
         help="Cap on PAID 2Captcha solves for the whole run, across every challenge round, block "
              "retry and scroll round (0 = never pay). Recorded as solves_spent in the sidecar.",
     )
     p.add_argument("--proxy", default=None)
     p.add_argument("--proxy-file", default=None)
     p.add_argument("--proxy-shuffle", action="store_true")
-    p.add_argument("--proxy-block-retries", type=int, default=3)
+    p.add_argument("--proxy-block-retries", type=_nonnegative_int, default=3)
     p.add_argument("--twocaptcha-key", default=None)
     p.add_argument("--captcha-api", default=None, help="Override the 2Captcha API base URL (testing only)")
     p.add_argument("--solve-captcha", choices=["off", "when-blocked", "always"], default="when-blocked")
     p.add_argument("--min-score", type=float, default=0.3, help="Minimum acceptable reCAPTCHA v3 score (2Captcha's minScore task field)")
     p.add_argument("--fingerprint", action="store_true", help='Apply a 2Captcha Fingerprint API user agent to a local browser (ignored with --cdp-endpoint, which brings its own)')
-    p.add_argument("--fp-tags", default=None, help="Fingerprint API filter, e.g. 'Windows'")
+    p.add_argument("--fp-tags", default=None, help="Fingerprint API filter, ONE OS-family tag, e.g. 'Windows'")
     p.add_argument("--fp-country", default=None, help="Fingerprint API filter, e.g. 'us'")
     p.add_argument("--cdp-endpoint", default=None, help='Connect to a 2Captcha Scraping Browser API profile (ws://...) instead of launching a local browser (or set SHEIN_CDP_ENDPOINT)')
     p.add_argument(
         "--scraper-api", action="store_true",
         help="Fetch through 2Captcha's Scraper API instead of a browser: one page per run, no scrolling, no local captcha solving (needs TWOCAPTCHA_KEY). --proxy/--cdp-endpoint/--fingerprint are ignored",
     )
-    p.add_argument("--scraper-api-timeout", type=int, default=60, help="Seconds 2Captcha itself waits for the target page to finish loading (1-120, their limit)")
+    p.add_argument("--scraper-api-timeout", type=_positive_int, default=60, help="Seconds 2Captcha itself waits for the target page to finish loading (1-120, their limit)")
     p.add_argument("--scraper-api-url", default=None, help="Override the Scraper API base URL (testing only)")
     p.add_argument(
         "--scraper-api-cdp", action="store_true",
@@ -319,7 +319,7 @@ async def _maybe_pass_risk_challenge(page, args: argparse.Namespace, client: Opt
 class _PyppeteerSession:
     """page_flow.PageSession over one pyppeteer page. A local session owns
     its browser (one launch per attempt, on that attempt's proxy — a
-    rotation is a fresh browser, CLAUDE.md §8); a --cdp-endpoint session
+    rotation is a fresh browser); a --cdp-endpoint session
     borrows the run's single connection and never closes it."""
 
     def __init__(self, page, browser, *, owns_browser: bool, args: argparse.Namespace):
@@ -394,7 +394,7 @@ _ORPHAN_CONNECT_ERRORS = ("InvalidStatusCode", "InvalidStatus", "InvalidHandshak
 
 def _quiet_orphaned_connect(loop, context) -> None:
     """A refused CDP handshake leaves pyppeteer's own connect task failing
-    after connect_with_retry has already moved on (CLAUDE.md §26: "an
+    after connect_with_retry has already moved on ("an
     orphaned-task traceback after a correct exit"). Only that shape is
     silenced; everything else reaches the default handler."""
     exc = context.get("exception")
@@ -491,6 +491,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     args = build_arg_parser().parse_args()
     args = env_config.apply_env(args)
+    page_flow.prefer_typed_target(args)
     try:
         return asyncio.run(run(args))
     except KeyboardInterrupt:

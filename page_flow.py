@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""page_flow.py — the ONE fetch loop all three engines run (CLAUDE.md §26).
+"""page_flow.py — the ONE fetch loop all three engines run.
 
 Until 2026-09-30 each engine carried its own copy of this loop, and the
 copies had already drifted: Playwright never recognised a dead proxy on
@@ -21,11 +21,12 @@ retry. Here the loop exists once:
 Each engine passes an `Engine` (open a page session, sleep) whose sessions
 provide NAMED operations — `goto`, `url`, `content`, `gb_raw_data`,
 `scroll`, `pass_risk_challenge`, `solve_captcha`, `close`. No JavaScript
-crosses this boundary (CLAUDE.md §1): each engine spells its own few
+crosses this boundary: each engine spells its own few
 lines in its own driver's dialect.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import random
@@ -41,6 +42,47 @@ from scraper_api_client import TwoCaptchaAuthError, TwoCaptchaClient, TwoCaptcha
 log = logging.getLogger("page_flow")
 
 Attempt = tuple  # (products, blocked, remote_api_error, rounds, scroll_error)
+
+
+def positive_int(value: str) -> int:
+    """argparse type: an integer >= 1 (counts that must allow at least one)."""
+    ivalue = int(value)
+    if ivalue < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive integer (got {value!r})")
+    return ivalue
+
+
+def nonnegative_int(value: str) -> int:
+    """argparse type: an integer >= 0 (EXTRA retries, where 0 is legal)."""
+    ivalue = int(value)
+    if ivalue < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0 (got {value!r})")
+    return ivalue
+
+
+def nonnegative_float(value: str) -> float:
+    """argparse type: a delay/duration >= 0."""
+    fvalue = float(value)
+    if fvalue < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0 (got {value!r})")
+    return fvalue
+
+
+def prefer_typed_target(args) -> None:
+    """Call right after `env_config.apply_env`. A SHEIN_URL from the
+    environment or .env only fills `--url` when nothing on the command line
+    named a target: a typed `--query`/`--category` wins over it. Without
+    this, `--url` (which overrides the builder flags) was silently taken
+    from .env and a typed `--query dress` scraped whatever URL the file held.
+    """
+    source = getattr(args, "_url_source", None)
+    if source and args.url and (getattr(args, "query", None) or getattr(args, "category", None)):
+        log.warning(
+            "SHEIN_URL from %s is ignored because --query/--category was typed on the command line.",
+            source,
+        )
+        args.url = None
+        args._url_source = None
 
 
 def jittered_delay(base_seconds: float, jitter: float) -> float:
@@ -100,7 +142,7 @@ async def _open_and_navigate(engine: Engine, args, start_url: str, proxy_pool: O
         except Exception as exc:  # noqa: BLE001 — every remote call must be bounded and reported
             last_error = redact_credentials(str(exc)).splitlines()[0] if str(exc) else type(exc).__name__
             if proxy_pool is not None and proxy is not None and is_proxy_dead_error(last_error):
-                # A dead proxy is not a timeout (CLAUDE.md §8): report it,
+                # A dead proxy is not a timeout: report it,
                 # so the pool rotates instead of retrying the same exit.
                 proxy_pool.report_failure(proxy, dead=True)
                 log.warning("Proxy reported dead: %s", last_error)
@@ -343,6 +385,10 @@ def scrape_via_scraper_api(*, args, start_url: str, is_product_page: bool, clien
             log.warning("Product page fetched via Scraper API but no ProductGroup/Product JSON-LD was found.")
         return products, blocked, False, 0, False
     parsed = sp.safe_parse_search_results(html, max_results=args.max_results)
+    try:
+        args._total_results = sp.total_result_count(html)
+    except Exception:  # noqa: BLE001 — a count is diagnostic, never fatal
+        args._total_results = None
     args._rejected_rows = max(getattr(args, "_rejected_rows", 0), parsed.rejected_rows)
     if parsed.source_used == "none" and not blocked:
         log.warning(
@@ -419,6 +465,15 @@ def finish(args, *, merged: List[Product], blocked: bool, remote_api_error: bool
     """The one finish_run call, with every sidecar field the family and
     diff_runs rely on."""
     budget = getattr(args, "_solve_budget", None)
+    total = getattr(args, "_total_results", None)
+    # A served listing whose own state says it holds products, parsed to
+    # nothing: a parser failure, never "the catalogue is empty".
+    parser_found_nothing = bool(not merged and not blocked and not remote_api_error and total and total > 0)
+    if parser_found_nothing:
+        log.error(
+            "SHEIN reports %d products for this listing but none were parsed — the page shape has "
+            "probably changed. Re-run with --dump-html and inspect the capture.", total,
+        )
     price_confirmed_pct = (sum(1 for p in merged if p.price is not None) / len(merged)) if merged else None
     return finish_run(
         products=merged, out_path=args.out, fmt=args.format, engine=engine_name, url=start_url,
@@ -427,7 +482,7 @@ def finish(args, *, merged: List[Product], blocked: bool, remote_api_error: bool
         started_at=started_at, rejected_rows=getattr(args, "_rejected_rows", 0), max_results=args.max_results,
         extra_meta={"solves_spent": budget.spent if budget is not None else 0, "sort": getattr(args, "sort", None)},
         rate_limited=bool(getattr(args, "_rate_limited", False)), total_results=getattr(args, "_total_results", None),
-        price_confirmed_pct=price_confirmed_pct,
+        price_confirmed_pct=price_confirmed_pct, parser_found_nothing=parser_found_nothing,
     )
 
 
@@ -462,4 +517,5 @@ def init_run_state(args, budget_factory) -> None:
 __all__: List[Any] = [
     "Engine", "PageSession", "fetch_search", "fetch_product_page", "run_attempts", "run_browser",
     "run_scraper_api", "scrape_via_scraper_api", "finish", "init_run_state", "jittered_delay",
+    "positive_int", "nonnegative_int", "nonnegative_float", "prefer_typed_target",
 ]

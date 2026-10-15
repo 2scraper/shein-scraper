@@ -4,7 +4,7 @@ marketplace-family analog of lidl-scraper's lidl_parser.py, skyscanner-
 scraper's flight_parser.py, stockx-scraper's product_parser.py, and
 perplexity-scraper's page_parser.py).
 
-**Honesty note, read before trusting anything below** (CLAUDE.md §15: an
+**Honesty note, read before trusting anything below** (an
 unverified site gets that stated plainly, not glossed over).
 
 Written 2026-09-21 from a REAL, live browser capture (a browser-rendering
@@ -223,7 +223,7 @@ not guessed:
     doesn't want this request served" outcomes rather than assuming any
     one of them is the "real" block and the others are noise.
   - **A useful side-finding from the same capture, re: the GeeTest question
-    (CLAUDE.md-adjacent, not yet reflected in README's CDP-autosolve
+    (not yet reflected in README's CDP-autosolve
     coverage claim)**: the captured HTML's `<head>` shows 2Captcha's
     Scraping Browser extension (`chrome-extension://
     kjmkgkdkpedkejedfhmfcenooemhbpbo/...`) injecting BOTH
@@ -360,7 +360,7 @@ SORT_VALUES = ("relevance", "new", "price_asc", "price_desc", "discount")
 # param, same honesty posture skyscanner-scraper used for an unconfirmed
 # flag before its own live capture. See TESTING.md.
 
-MIN_CARD_MATCHES = 2  # per family invariant (CLAUDE.md §5): a single unrelated
+MIN_CARD_MATCHES = 2  # per family invariant: a single unrelated
                        # link/card must not read as "results rendered" — mirrors
                        # lidl-scraper's / stockx-scraper's own MIN_CARD_MATCHES.
 
@@ -618,7 +618,7 @@ def _gb_product_to_product(raw: dict, *, currency: Optional[str]) -> Optional[Pr
             review_count = int(raw["comment_num"])
     except (TypeError, ValueError):
         pass
-    # Zero reviews means no rating, not a rating of 0 (CLAUDE.md §21/§24):
+    # Zero reviews means no rating, not a rating of 0:
     # a 0.0 would read as the worst possible score and drag any average.
     if review_count == 0:
         rating = None
@@ -748,7 +748,7 @@ def count_result_cards(html: str) -> int:
 # --------------------------------------------------------------------------- #
 def extract_json_ld(html: str) -> List[dict]:
     """Every JSON-LD node on the page, with `@graph` arrays flattened and
-    non-dict entries dropped (CLAUDE.md §4's legal-but-hostile shapes)."""
+    non-dict entries dropped (legal-but-hostile JSON-LD shapes)."""
     soup = BeautifulSoup(html, "html.parser")
     out: List[dict] = []
 
@@ -927,7 +927,7 @@ def _parse_price_text(text: Optional[str]) -> Optional[float]:
 
 
 # --------------------------------------------------------------------------- #
-# Crash-safety wrapper — CLAUDE.md §6: an unexpected parse exception
+# Crash-safety wrapper: an unexpected parse exception
 # degrades to an empty result, never crashes the caller
 # --------------------------------------------------------------------------- #
 def safe_parse_search_results(html: str, *, max_results: int, raw_data: Optional[dict] = None) -> SearchResult:

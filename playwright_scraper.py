@@ -2,8 +2,7 @@
 """playwright_scraper.py — Playwright engine for the shein-scraper family
 member. Playwright is the primary engine (see selenium_scraper.py /
 puppeteer_scraper.py for parity copies — all three must agree on exit
-codes, run status and whether a run crashes or spends money — CLAUDE.md
-§4).
+codes, run status and whether a run crashes or spends money).
 
 **Local-first, same principle as every other family member** — this
 launches an ordinary local headless Chromium by default and does NOT
@@ -64,7 +63,7 @@ from scraper_api_client import TwoCaptchaClient
 
 ENGINE_NAME = "playwright"
 
-# --- the handful of engine constants that vary per site (CLAUDE.md §5) ---
+# --- the handful of engine constants that vary per site ---
 NAV_TIMEOUT_MS = 30_000
 READINESS_WAIT_MS = 3_000  # window.gbRawData is confirmed present in the initial
                             # SSR payload (no extra XHR needed for the first
@@ -76,25 +75,11 @@ MIN_CARD_MATCHES = sp.MIN_CARD_MATCHES
 log = logging.getLogger("playwright_scraper")
 
 
-def _positive_int(value: str) -> int:
-    ivalue = int(value)
-    if ivalue < 1:
-        raise argparse.ArgumentTypeError(f"must be a positive integer (got {value!r})")
-    return ivalue
-
-
-def _nonnegative_int(value: str) -> int:
-    ivalue = int(value)
-    if ivalue < 0:
-        raise argparse.ArgumentTypeError(f"must be >= 0 (got {value!r})")
-    return ivalue
-
-
-def _nonnegative_float(value: str) -> float:
-    fvalue = float(value)
-    if fvalue < 0:
-        raise argparse.ArgumentTypeError(f"must be >= 0 (got {value!r})")
-    return fvalue
+# One definition of each numeric flag type, shared by all three engines so
+# their parsers cannot disagree about what a negative value means.
+_positive_int = page_flow.positive_int
+_nonnegative_int = page_flow.nonnegative_int
+_nonnegative_float = page_flow.nonnegative_float
 
 
 def _budget(args) -> "shein_challenge.SolveBudget":
@@ -143,14 +128,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--proxy", default=None, help="A single proxy, e.g. http://login:pass@host:port (or set SHEIN_PROXY)")
     p.add_argument("--proxy-file", default=None, help="One proxy per line, same formats as --proxy")
     p.add_argument("--proxy-shuffle", action="store_true")
-    p.add_argument("--proxy-block-retries", type=int, default=3)
+    p.add_argument("--proxy-block-retries", type=_nonnegative_int, default=3)
     p.add_argument("--twocaptcha-key", default=None, help="(or set TWOCAPTCHA_KEY)")
     p.add_argument("--captcha-api", default=None, help="Override the 2Captcha API base URL (testing only)")
     p.add_argument("--solve-captcha", choices=["off", "when-blocked", "always"], default="when-blocked")
     p.add_argument("--min-score", type=float, default=0.3, help="Minimum acceptable reCAPTCHA v3 score (2Captcha's minScore task field)")
     p.add_argument("--cdp-endpoint", default=None, help='Connect to a 2Captcha Scraping Browser API profile (ws://...) instead of launching a local browser (or set SHEIN_CDP_ENDPOINT)')
     p.add_argument("--fingerprint", action="store_true", help='Apply a 2Captcha Fingerprint API user agent to a local browser (ignored with --cdp-endpoint, which brings its own)')
-    p.add_argument("--fp-tags", default=None, help="Fingerprint API filter, e.g. 'Windows,Chrome'")
+    p.add_argument("--fp-tags", default=None, help="Fingerprint API filter, ONE OS-family tag, e.g. 'Windows'")
     p.add_argument("--fp-country", default=None, help="Fingerprint API filter, e.g. 'us'")
     p.add_argument(
         "--scraper-api", action="store_true",
@@ -210,8 +195,8 @@ async def _new_context(
         # browser.contexts came back EMPTY on the third attempt -- the
         # provider's own infrastructure appears to recycle the underlying
         # session during a long block, out from under this still-connected
-        # CDP handle. Raising here used to crash the whole run (CLAUDE.md
-        # §6: a block/retry must degrade to a failed unit, never a crash
+        # CDP handle. Raising here used to crash the whole run (a
+        # block/retry must degrade to a failed unit, never a crash
         # that discards already-collected data). Fall back to a fresh,
         # empty context instead -- this attempt loses whatever cookies the
         # persistent context carried (a previously solved challenge no
@@ -396,7 +381,7 @@ async def _connect_over_cdp(pw, cdp_endpoint: str):
 
 
 class _PlaywrightSession:
-    """page_flow.PageSession over one Playwright page (CLAUDE.md §26: the
+    """page_flow.PageSession over one Playwright page (the
     loop is shared, only these named operations are Playwright's)."""
 
     def __init__(self, page: Page, context: BrowserContext, *, reuse_default: bool, args: argparse.Namespace):
@@ -480,7 +465,7 @@ async def run(args: argparse.Namespace) -> int:
         print("Error: --scraper-api-cdp requires --scraper-api", file=sys.stderr)
         return EXIT_BAD_USAGE
     if args.scraper_api:
-        # Browserless: runs even with no engine driver installed (CLAUDE.md §6).
+        # Browserless: runs even with no engine driver installed.
         if not args.twocaptcha_key:
             print("Error: --scraper-api requires --twocaptcha-key/TWOCAPTCHA_KEY", file=sys.stderr)
             return EXIT_BAD_USAGE
@@ -544,6 +529,7 @@ def main() -> int:
     parser = build_arg_parser()
     args = parser.parse_args()
     args = env_config.apply_env(args)
+    page_flow.prefer_typed_target(args)
     try:
         return asyncio.run(run(args))
     except KeyboardInterrupt:
