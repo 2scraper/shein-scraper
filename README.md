@@ -125,8 +125,10 @@ page. The scraper recognises both gates:
   with a fresh puzzle if SHEIN refuses it (`--risk-challenge-rounds`,
   default 5).
 - **`/risk/action/limit`**, a rate limit. There is nothing to solve. The
-  run stops with exit 3 and `stop_reason: rate_limited`, or, with
-  `--rate-limit-cooldown 300`, waits and retries once.
+  run stops with exit 3 (no output is written unless you pass
+  `--allow-empty`, in which case the `.meta.json` says
+  `stop_reason: rate_limited`), or, with `--rate-limit-cooldown 300`,
+  waits and retries once.
 
 What to expect, measured on 2026-09-30 with fresh US Scraping Browser
 profiles: **3 of 5 profiles passed the challenge**, each on its third
@@ -153,7 +155,7 @@ file.
 | `6` | partial: rows were written, but the run did not finish cleanly — `stop_reason` says why (`blocked`, `rate_limited`, `remote_api_error`, `failed_pages`, `rejected_rows`) |
 | `3` | blocked or rate-limited, no rows |
 | `4` | the page loaded but had no products |
-| `5` | a remote service failed (Scraping Browser, Scraper API), no rows |
+| `5` | the content was never obtained, no rows: a remote service failed (Scraping Browser, Scraper API), the page never loaded, or SHEIN stated the listing holds products and none could be parsed (`stop_reason: parser_found_nothing` — the page layout has probably changed) |
 | `2` | bad usage |
 | `1` | crash (a bug; please report it) |
 
@@ -176,7 +178,7 @@ command line.
 
 | Option | Default | |
 |---|---|---|
-| `--query` / `--category` / `--url` | | what to scrape (`--url` wins; it can be a search, category or product URL) |
+| `--query` / `--category` / `--url` | `SHEIN_URL` | what to scrape (a typed `--url` wins; it can be a search, category or product URL). `SHEIN_URL` from the environment or `.env` is used only when none of the three is typed |
 | `--max-results` | 30 | products to collect |
 | `--format` / `--out` | json / `shein_results.<format>` | output format and path |
 | `--max-scrolls` / `--stall-rounds` / `--scroll-delay` | 20 / 4 / 1.5s | how far to scroll a listing, and when to stop if nothing new appears |
@@ -195,6 +197,12 @@ command line.
 | `--allow-empty` | off | write an output file even when nothing was found |
 | `--headless` / `--headful` | headless | show the browser window |
 | `--sort` | relevance | recorded in the results only; not yet sent to SHEIN |
+
+There is no `--pages`, `--concurrency` or `--mode`: a SHEIN listing is one
+infinitely-scrolling page with no per-page address, so `--max-results`,
+`--max-scrolls` and `--stall-rounds` take the place of a page count, and
+nothing can be handed to a second worker. The kind of page (search,
+category or product) follows from the URL.
 
 Run any engine with `--help` for the full list.
 
@@ -230,15 +238,17 @@ Chromium.
   when it collects fewer than SHEIN says exist.
 - **`--sort` is not sent to SHEIN yet.** Its URL parameter has not been
   confirmed.
-- **Profiles wear out.** A Scraping Browser endpoint's credentials last
-  about a day (HTTP 401 afterwards, with a clear message). After roughly
+- **Profiles wear out.** A Scraping Browser endpoint's credentials
+  eventually stop working; how long they last has not been measured for
+  this repo, so treat an HTTP 401 (reported with a clear message) as the
+  signal to fetch a fresh endpoint. After roughly
   ten runs in a row a profile may be rate-limited for a few minutes.
 - **The bot check is not always solvable** — see above.
 
 ## Development
 
 ```bash
-python3 smoke_test.py            # 97 offline checks, no network, no engine needed
+python3 smoke_test.py            # 108 offline checks, no network, no engine needed
 python3 .github/ci_checks.py     # credential scan
 ```
 

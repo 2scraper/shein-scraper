@@ -9,6 +9,21 @@ shein_results.*
 *_debug.png
 live_results/
 live/
+# raw captures and dumps, by KIND of directory rather than one chosen name
+captures/
+dump/
+dumps/
+out/
+output/
+run/
+runs/
+result/
+results/
+tmp/
+scratch/
+# a page saved at the repo root; the landing page is the one tracked .html
+/*.html
+!/landing.html
 *_challenge/
 *.page[0-9]*
 
@@ -34,7 +49,7 @@ node_modules/
 .idea/
 .vscode/
 
-# secrets — `.env*` so a `.env.bak`/`.env.local` copy is never one `git add -A` away (CLAUDE.md §22)
+# secrets — `.env*` so a `.env.bak`/`.env.local` copy is never one `git add -A` away
 *.log
 .env*
 !.env.example

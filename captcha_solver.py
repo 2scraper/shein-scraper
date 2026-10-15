@@ -267,7 +267,7 @@ def _task_payload(signal: CaptchaSignal, page_url: str, *, proxyless: bool, min_
         # score` is the CLI knob; omitting it would leave 2Captcha's own
         # server-side default in effect, silently, which is the same
         # "documented flag nobody reads" shape this family has shipped
-        # before (CLAUDE.md §17) — so this module always sends one.
+        # before — so this module always sends one.
         task["minScore"] = min_score
     return task
 

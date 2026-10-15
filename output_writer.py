@@ -3,7 +3,7 @@
 and run metadata. Carries (almost) no site knowledge: everything here is
 part of the family's shared output CONTRACT — diverging from it needs a
 written reason, not a per-site tweak. Ported near-verbatim from
-lidl-scraper's output_writer.py (CLAUDE.md §7: porting starts by copying
+lidl-scraper's output_writer.py (porting starts by copying
 the family-shared modules from the newest sibling and diffing what
 changed on purpose) — in turn ported from skyscanner-scraper's, in turn
 from stockx-scraper's original (commit 00b5570). The exit codes,
@@ -16,9 +16,12 @@ family-common fields) differs per repo.
 """
 from __future__ import annotations
 
+import contextlib
 import csv
 import hashlib
 import json
+import os
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
@@ -152,26 +155,103 @@ def merge_pages(pages: Sequence[Sequence[Product]]) -> List[Product]:
 # --------------------------------------------------------------------------- #
 # Writers
 # --------------------------------------------------------------------------- #
+@contextlib.contextmanager
+def _atomic(path: str, newline: Optional[str] = None):
+    """Write to a temporary file beside `path`, then rename over it.
+
+    `open(path, "w")` truncates before a single byte is written, so a crash,
+    a kill or a full disk halfway through `json.dump` would leave a shorter,
+    invalid file where the previous good output was. The temporary file sits
+    in the SAME directory because `os.replace` is only atomic within one
+    filesystem; `fsync` before the rename makes the content durable.
+
+    Mode: `NamedTemporaryFile` creates 0600 and a rename keeps it, so the
+    mode is set explicitly. An existing target keeps its own mode (someone
+    may have tightened it on purpose); a new file gets `0o666 & ~umask`,
+    exactly what a plain `open()` would have given it.
+    """
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", newline=newline, dir=directory,
+        prefix=os.path.basename(path) + ".", suffix=".tmp", delete=False)
+    try:
+        with handle:
+            yield handle
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            mode = os.stat(path).st_mode & 0o777
+        except OSError:
+            umask = os.umask(0)
+            os.umask(umask)
+            mode = 0o666 & ~umask
+        os.chmod(handle.name, mode)
+        os.replace(handle.name, path)
+    except BaseException:
+        try:
+            os.unlink(handle.name)
+        except OSError:
+            pass
+        raise
+
+
+# A spreadsheet treats a cell beginning with one of these as a FORMULA, not
+# as text, and every title/brand/category string here was written by whoever
+# listed the product. A leading tab/CR/LF is included because some readers
+# strip it and expose what follows.
+CSV_FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r", "\n")
+CSV_FORMULA_ESCAPE = "'"
+
+
+def _csv_value(v):
+    if isinstance(v, (list, tuple)):
+        return " | ".join(str(x) for x in v)
+    if isinstance(v, dict):
+        return json.dumps(v, ensure_ascii=False, separators=(",", ":"))
+    return v
+
+
+def _csv_escape(v):
+    """(value, was_escaped). Only STRINGS are touched: escaping a number
+    would turn -5.0 into text and break every sum over the column. CSV only;
+    the JSON output keeps the site's bytes, and `csv_cells_escaped` in the
+    sidecar declares the difference."""
+    if isinstance(v, str) and v.startswith(CSV_FORMULA_LEADS):
+        return CSV_FORMULA_ESCAPE + v, True
+    return v, False
+
+
 def write_json(products: Sequence[Product], out_path: str) -> None:
-    with open(out_path, "w", encoding="utf-8") as f:
+    with _atomic(out_path) as f:
         json.dump([asdict(p) for p in products], f, ensure_ascii=False, indent=2)
 
 
-def write_csv(products: Sequence[Product], out_path: str) -> None:
-    with open(out_path, "w", newline="", encoding="utf-8") as f:
+def write_csv(products: Sequence[Product], out_path: str) -> int:
+    """Returns how many cells were formula-escaped."""
+    escaped = 0
+    # newline="" is the csv module's requirement and must survive the move
+    # into the temp file, or every row gains a stray CR on Windows.
+    with _atomic(out_path, newline="") as f:
         writer = csv.DictWriter(f, fieldnames=PRODUCT_FIELD_NAMES)
         writer.writeheader()  # written even for zero rows — a consumer reads
         for p in products:    # an empty table, not a zero-byte file.
-            writer.writerow(asdict(p))
+            row = {}
+            for k, v in asdict(p).items():
+                # Escape AFTER serialising: a joined list is text too.
+                row[k], was_escaped = _csv_escape(_csv_value(v))
+                escaped += was_escaped
+            writer.writerow(row)
+    return escaped
 
 
-def write_output(products: Sequence[Product], out_path: str, fmt: str) -> None:
+def write_output(products: Sequence[Product], out_path: str, fmt: str) -> int:
+    """Returns the number of formula-escaped CSV cells (always 0 for JSON)."""
     if fmt == "json":
         write_json(products, out_path)
-    elif fmt == "csv":
-        write_csv(products, out_path)
-    else:
-        raise ValueError(f"Unsupported format: {fmt!r} (expected 'json' or 'csv')")
+        return 0
+    if fmt == "csv":
+        return write_csv(products, out_path)
+    raise ValueError(f"Unsupported format: {fmt!r} (expected 'json' or 'csv')")
 
 
 # --------------------------------------------------------------------------- #
@@ -212,9 +292,8 @@ def write_meta(
     }
     if extra:
         meta.update(extra)
-    Path(meta_path_for(out_path)).write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    with _atomic(meta_path_for(out_path)) as f:
+        f.write(json.dumps(meta, ensure_ascii=False, indent=2))
 
 
 # --------------------------------------------------------------------------- #
@@ -245,6 +324,7 @@ def finish_run(
     max_results: Optional[int] = None,
     rate_limited: bool = False,
     total_results: Optional[int] = None,
+    parser_found_nothing: bool = False,
 ) -> int:
     """Decide status/exit code, write output + sidecar (or neither), return
     the process exit code. NEVER writes a sidecar for a failed run, and
@@ -263,7 +343,7 @@ def finish_run(
     # blocked partway through.
     #
     # Rows gathered by a run that did NOT finish cleanly are `partial` (6),
-    # with the cause in `stop_reason` (CLAUDE.md §25: exit 5 and exit 3
+    # with the cause in `stop_reason` (exit 5 and exit 3
     # promise no file; 6 means "some rows, incomplete"). Audit 2026-09-30:
     # this used to return 5 or 3 AND write the rows, so a consumer keyed on
     # the exit code threw away good data. `rejected_rows` counts records
@@ -271,14 +351,24 @@ def finish_run(
     if zero_products:
         if remote_api_error:
             status, exit_code = "remote_api_error", EXIT_REMOTE_API_ERROR
+            stop_reason = status
         elif blocked:
             status, exit_code = "blocked", EXIT_BLOCKED
+            # A throttle is not a block: say which one stopped the run.
+            stop_reason = "rate_limited" if rate_limited else "blocked"
+        elif parser_found_nothing:
+            # The page was served and SHEIN itself stated it holds products,
+            # yet nothing parsed: that is OUR parser failing, not an empty
+            # catalogue. Exit 4 would claim a fact the response contradicts,
+            # so this is "content never obtained" (5) with its own reason.
+            status, exit_code = "parser_found_nothing", EXIT_REMOTE_API_ERROR
+            stop_reason = status
         else:
             status, exit_code = "empty", EXIT_ZERO_PRODUCTS
-        stop_reason = status
+            stop_reason = status
     elif remote_api_error or blocked or partial or rejected_rows:
         status, exit_code = "partial", EXIT_PARTIAL
-        # A throttle is not a block (CLAUDE.md §24): "blocked" sends the
+        # A throttle is not a block: "blocked" sends the
         # reader to buy a proxy, "rate_limited" to slow down.
         stop_reason = ("remote_api_error" if remote_api_error else "rate_limited" if rate_limited and blocked
                        else "blocked" if blocked else "failed_pages" if partial else "rejected_rows")
@@ -298,8 +388,11 @@ def finish_run(
     if zero_products and not allow_empty:
         return exit_code
 
-    write_output(products, out_path, fmt)
-    extra = dict(extra_meta or {})
+    escaped = write_output(products, out_path, fmt)
+    # Housekeeping first, the caller's extra over it: a key collision must
+    # never silently drop what the caller recorded.
+    extra = {"csv_cells_escaped": escaped} if fmt == "csv" else {}
+    extra.update(extra_meta or {})
     if rejected_rows:
         extra["rejected_rows"] = rejected_rows
     # What diff_runs needs to refuse a meaningless comparison: the cap the

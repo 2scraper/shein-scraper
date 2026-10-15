@@ -9,12 +9,68 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+> **Behaviour changes.**
+> - A listing where SHEIN states it holds products but none could be parsed
+>   now exits **5** with `stop_reason: parser_found_nothing`. It used to
+>   exit 4 ("empty"), which claimed the catalogue was empty when the page
+>   said otherwise.
+> - `selenium_scraper.py` and `puppeteer_scraper.py` now reject negative
+>   values for `--retries`, `--retry-delay`, `--scroll-delay`,
+>   `--delay-jitter`, `--rate-limit-cooldown`, `--block-retries`,
+>   `--risk-challenge-rounds`, `--max-solves` and `--proxy-block-retries`,
+>   and a `--scraper-api-timeout` below 1, with exit 2, as Playwright
+>   already did. `--retries -1` used to navigate zero times and exit 4.
+>   `--proxy-block-retries -1` is now refused in all three engines.
+> - A `SHEIN_URL` in `.env` or the environment no longer overrides a typed
+>   `--query` or `--category` (it is ignored with a warning). It still
+>   fills `--url` when nothing was typed.
+> - The daily canary now goes red when SHEIN serves no rows. Its live job
+>   needs the `SHEIN_CDP_ENDPOINT` repository secret and fails without it.
+
+### Fixed
+- **Output files are written atomically**: to a temporary file in the
+  same directory, flushed and synced, then renamed over the target. A run
+  that fails part-way through a write leaves the previous output (and its
+  `.meta.json`) intact instead of a truncated file. New files get the
+  usual umask-derived mode; an existing file keeps its mode.
+- **CSV cells that a spreadsheet would run as a formula** (starting with
+  `=`, `+`, `-`, `@`, tab, CR or LF) get a leading apostrophe in CSV
+  output only. Numbers are left alone and JSON keeps the site's text. The
+  number of escaped cells is recorded as `csv_cells_escaped` in the
+  `.meta.json`.
+- **The canary tested nothing for two weeks.** From 2026-10-01 to
+  2026-10-15 every scheduled run was refused by SHEIN's
+  `/risk/action/limit` gateway (exit 3, zero rows) and reported green. The
+  GitHub-runner job is now labelled as expecting that refusal and fails on
+  anything else (empty, never obtained, too few rows); a new daily
+  `canary-live` job runs through a Scraping Browser profile and must
+  return at least 10 rows, 90% of them priced and titled.
+- A rate-limited run written with `--allow-empty` now records
+  `stop_reason: rate_limited` rather than `blocked`.
+- `diff_runs.py` compares a JSON run and a CSV run of the same rows as
+  equal; before, every CSV price read as text and showed as "changed".
+- `--fp-tags` help in the Playwright engine now gives a single OS tag as
+  its example, which is what the Fingerprint API accepts.
+- `.gitignore` covers capture and dump directories by kind (`captures/`,
+  `dumps/`, `out/`, `runs/`, `tmp/`, ...) and HTML saved at the repo root.
+- `tests.yml` runs the credential scan through `.github/ci_checks.py`,
+  the same code the offline suite runs, and the scan refuses to report
+  clean after reading zero files.
+
+### Changed
+- The README no longer says Scraping Browser credentials last about a
+  day; that figure was never measured for this repo. An HTTP 401 is the
+  signal to fetch a fresh endpoint.
+- Source comments, workflow comments and this changelog no longer refer
+  to the maintainers' private notes; the rules are stated in place. A new
+  offline check keeps it that way.
+
 ## [0.1.0] — 2026-09-30
 
 First public release. Everything below was developed before it; the
 entries are kept in the order they were written.
 
-### Changed — 2026-09-30, one fetch loop for all three engines (`page_flow.py`, CLAUDE.md §26)
+### Changed — 2026-09-30, one fetch loop for all three engines (`page_flow.py`)
 - The page loop, block/cooldown retries, the Scraper API mode and the
   `finish_run` call were three near-identical copies (2,959 engine lines).
   They are now one implementation. The engines keep only driver plumbing:
@@ -29,8 +85,8 @@ entries are kept in the order they were written.
     `close()`d the remote browser, ending the session. It now connects
     once per run and disconnects.
 - **Tests**: 16 checks that pinned loop features in each engine's source
-  were replaced by checks on the one place they now live, plus the two
-  §26 asks for:
+  were replaced by checks on the one place they now live, plus two new
+  ones:
   - the session/engine operation set is DERIVED from `page_flow`'s AST, and
     every engine must provide it;
   - the shared loop is driven end to end by a fake engine on the real
@@ -74,40 +130,40 @@ entries are kept in the order they were written.
   traceback after a successful retry is now filtered by class.
 - Fresh-profile tally for the challenge: 3 passed out of 5.
 
-### Changed — 2026-09-30, sync with CLAUDE (4).md §19–26
-A read-only pass over the new sections found rules this repo broke. Each
-was re-checked on the code before fixing (CLAUDE.md §14):
+### Changed — 2026-09-30, sync with the family's newer rules
+A read-only pass over the family's newer rules found ones this repo broke. Each
+was re-checked on the code before fixing:
 - **`.gitignore`**: `.env*` (with `!.env.example`); `.env.bak` was not
   ignored. Also `*_challenge/` (the `--dump-html` challenge screenshots),
   `*.page[0-9]*` and `live/`. A check runs `git check-ignore` on both
-  must-ignore and must-keep paths (§22/§26).
+  must-ignore and must-keep paths.
 - **Credential scan** (`.github/ci_checks.py`): caught neither
   `"api_key": "…"` nor its JSON-escaped form. It now allows a quoted and
   escaped name, flags a 32-hex value next to a key word, skips any
   directory holding `pyvenv.cfg` (not only known venv names), and exposes
   `scan_text()` so a check plants four credential shapes and requires all
-  four found (§23–§25).
+  four found.
 - **No inline local imports in workflows**: the sample-output step
   imported `output_writer` inline. It now calls `ci_checks.py
-  --sample-check`, with a check guarding it (§26).
+  --sample-check`, with a check guarding it.
 - **Banned-wording check**: it exempted its own file, where the phrases
   sat verbatim, and walked into `.venv*`. The phrases are built from
   pieces, the exemption is gone, and venvs are skipped by `pyvenv.cfg`.
 - **Scanner checks skip only when `.github/` is absent**: deleting
-  `ci_checks.py` alone used to turn both of them green (§22).
+  `ci_checks.py` alone used to turn both of them green.
 - **Scraping Browser connect** (`scraper_api_client.connect_with_retry`,
   both CDP engines): 3 attempts 3s apart for a busy profile (HTTP 500 /
   timeout), each bounded at 10s (pyppeteer never resolves a refused
   handshake), and a 401 fails at once saying the endpoint expired. Live:
-  an old profile now reports exactly that (§26).
+  an old profile now reports exactly that.
 - **Canary**: exit 5 from the secret-less local job is an error, not a
   notice. The CDP job is manual-dispatch only, because endpoints expire
-  after about a day (§24/§26).
-- **Sidecar**: `stop_reason=rate_limited` (a throttle is not a block,
-  §24), `total_results`, `sort`, `solves_spent`. `diff_runs` refuses runs
+  after about a day.
+- **Sidecar**: `stop_reason=rate_limited` (a throttle is not a block),
+  `total_results`, `sort`, `solves_spent`. `diff_runs` refuses runs
   with a different `--sort`, and `--sort`'s help says it is recorded, not
-  sent (§21).
-- **Zero reviews give `rating=None`**, not 0.0 (§21/§24).
+  sent.
+- **Zero reviews give `rating=None`**, not 0.0.
 
 Not changed: a committed Scraping-Browser fixture for the marker tests,
 a stop_reason for "links served but zero rows parsed", and the
@@ -115,7 +171,7 @@ a stop_reason for "links served but zero rows parsed", and the
 needs a live capture to decide.
 
 ### Added — 2026-09-30, one paid-solve budget per run (`--max-solves`)
-- CLAUDE.md §23 ("a cap that nothing enforces is a bill"). Counted before
+- A cap that nothing enforces is a bill. Counted before
   the change: up to 5 grid/icon rounds per challenge pass times 3
   `--block-retries` passes, plus one generic widget solve per scroll round
   — nothing summed them. `--max-solves N` (default 8, `0` = never pay) is
@@ -163,15 +219,15 @@ was confirmed RED against the old code:
    `source_changed` entry in the next diff.
 5. **JSON-LD shapes crashed or were missed**: `offers` as a list/null/
    AggregateOffer, `brand` as a string, Product inside `@graph`,
-   `ImageObject` images. All normalized (CLAUDE.md §4's table).
+   `ImageObject` images. All normalized.
 6. **The promised `--rate-limit-cooldown` retry did not run on the last
    attempt**: `continue` on the final `range()` iteration ended the loop
    (with `--block-retries 0`, zero retries). The six loops now use a
    counter, and the cooldown retry never spends a block retry. A
    behavioural test drives all three engines' `run()`.
 7. **Rows plus a fetch failure exited `5`/`3` and wrote the file**,
-   contradicting §25. Now `partial` (see the note above). The pinned test
-   stating the old position was rewritten in the same change, as §25 asks.
+   contradicting the exit-code contract. Now `partial` (see the note above).
+   The pinned test stating the old position was rewritten in the same change.
 
 Also: `smoke_test.check()` now records a `SystemExit` raised inside a
 check as that check's failure. Before, one CLI helper exiting inside a
@@ -180,7 +236,7 @@ check 3).
 
 **Not changed, deliberately** (the audit's architecture section):
 - the fetch/retry/scroll loop is still one copy per engine. Moving it into
-  a shared `page_flow` (CLAUDE.md §26) is the right next step, but the
+  a shared `page_flow` is the right next step, but the
   audit itself recommends doing it after behaviour is pinned by checks,
   which this batch did;
 - no global solve budget across a run yet (per-pass `--risk-challenge-rounds`
@@ -240,7 +296,7 @@ check 3).
   than reported as a bad answer: live, a verifiably correct answer still
   got `code=9001 "System error"`. All three engines call it on both the
   search and product-page paths, before the gateway URL is judged
-  blocked, and it never raises (CLAUDE.md §6).
+  blocked, and it never raises.
 - `--risk-challenge-rounds N` (default 5, `0` disables; also skipped with
   `--solve-captcha off`). The checkbox step needs no key; the grid needs
   `TWOCAPTCHA_KEY`. With `--dump-html`, each round's grid/icon/after-click
@@ -347,7 +403,7 @@ check 3).
   On the third attempt, `browser.contexts` came back empty and
   `_new_context` raised `RuntimeError`, uncaught — crashing the whole run
   (exit 1, no `.meta.json`) instead of degrading that one attempt, which
-  is exactly the CLAUDE.md §6 invariant this family is supposed to hold.
+  breaks the invariant that a block or retry never crashes a run.
   The provider appears to recycle a profile's underlying session during a
   long block; this codebase had never observed that before now.
 - Fixed: `_new_context` now falls back to a fresh, empty context when the
@@ -399,7 +455,7 @@ check 3).
 - Fixed by switching to `asyncio.run(run(args))`, matching
   `playwright_scraper.py`'s already-correct pattern in this same repo —
   also closes a small, previously-unnoticed parity gap between the two
-  async engines' entry points (CLAUDE.md §4).
+  async engines' entry points.
 - **Not yet checked**: `tipranks-scraper` and `g2-scraper`'s
   `puppeteer_scraper.py` use the same `get_event_loop().run_until_complete`
   pattern (confirmed present via a quick grep, not yet fixed or even
@@ -412,7 +468,7 @@ check 3).
   `run()` directly instead — cannot silently reappear in any of the three
   engines without failing the suite.
 - **Confirmed on Roman's own machine, not just the sandbox** (see
-  `TESTING.md` §10): 68/68 over 5 consecutive `smoke_test.py` runs, the
+  `TESTING.md`, section 10): 68/68 over 5 consecutive `smoke_test.py` runs, the
   credential scanner passing, a clean working tree, and two direct real
   CLI runs — `selenium_scraper.py` still correctly reports "not
   installed" with selenium genuinely absent, and `puppeteer_scraper.py`
@@ -534,7 +590,7 @@ check 3).
   been solved automatically, with no warning that coverage was missing.
 - Fixed by adding the same `if autosolve: await _enable_scraping_browser_auto_
   solve(page)` call `scrape_search()` already had. `selenium_scraper.py` is
-  correctly exempt (it refuses `--cdp-endpoint` outright — CLAUDE.md §6 — so
+  correctly exempt (it refuses `--cdp-endpoint` outright — so
   there is no CDP session to arm this on in the first place).
 - `smoke_test.py` gained a new AST-based regression check: every function
   across `playwright_scraper.py`/`puppeteer_scraper.py` that takes an
@@ -586,7 +642,7 @@ check 3).
   can't paginate itself), and `--solve-captcha` is a documented no-op (a
   solved token has no live page/DOM to be injected into). `--proxy`/
   `--cdp-endpoint`/`--fingerprint` are ignored with a warning, not silently
-  dropped (CLAUDE.md §4/§6) — this mode brings its own exit IP/device via
+  dropped — this mode brings its own exit IP/device via
   2Captcha's infrastructure.
 
 ### Added — 2026-09-22, `--block-retries`: retry a blocked outcome on the same session before giving up
@@ -990,7 +1046,7 @@ check 3).
   no-site-knowledge modules ported near-verbatim from `lidl-scraper`
   (`output_writer.py`, `proxy_pool.py`, `captcha_solver.py`,
   `fingerprint_client.py`, `scraper_api_client.py`, `diff_runs.py`,
-  `env_config.py` — per CLAUDE.md §7), and `shein_parser.py` as this repo's
+  `env_config.py`), and `shein_parser.py` as this repo's
   own site knowledge.
 - Unlike most of this family's first builds, `shein_parser.py` is grounded
   in a real, live browser capture from the start, not a guess awaiting live
@@ -1042,7 +1098,7 @@ check 3).
 ### Family-shared modules, ported unchanged in substance from lidl-scraper
 - `env_config.ENV_KEYS` renamed to this repo's own `SHEIN_PROXY` /
   `SHEIN_CDP_ENDPOINT` / `SHEIN_URL` (kept in sync with `.env.example`,
-  verified by a `smoke_test.py` check per CLAUDE.md §17).
+  verified by a `smoke_test.py` check).
 - `output_writer.py`'s exit codes, `STATUS_BY_EXIT` map, and
   `finish_run()` precedence logic are byte-for-byte identical to every
   prior family member — only `Product`'s site-specific tail differs.

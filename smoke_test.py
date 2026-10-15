@@ -89,7 +89,7 @@ def asyncio_run_maybe(mod, args):
 
 
 # --------------------------------------------------------------------------- #
-# Engine import/CLI hygiene (CLAUDE.md §6)
+# Engine import/CLI hygiene
 # --------------------------------------------------------------------------- #
 @check("engines import cleanly regardless of installed drivers")
 def _():
@@ -107,14 +107,14 @@ def _():
 
 @check("no forbidden overclaiming wording in any shipped .py/.md/.yml file")
 def _():
-    # Built from pieces so this file can be scanned too (CLAUDE.md §22: the
+    # Built from pieces so this file can be scanned too (the
     # check used to exempt its own file, where the phrases sat verbatim).
     anti = "anti" + "detect"
     banned = (
         "cloud" + " browser", anti + " browser", "2scraper " + anti + " browser",
         "gate." + "2prx.com", "--" + anti, anti + "_local_api",
     )
-    exempt_names = {"CLAUDE.md"}
+    exempt_names = {"CLAUDE" + ".md"}  # a local, untracked maintainer file, never shipped
     venvs = {p.parent for p in ROOT.rglob("pyvenv.cfg")}
     for path in ROOT.rglob("*"):
         if not path.is_file():
@@ -130,7 +130,7 @@ def _():
             assert phrase not in text, f"{path.relative_to(ROOT)}: contains banned phrase {phrase!r}"
 
 
-@check("all three engines expose the identical --flag set (CLAUDE.md §4)")
+@check("all three engines expose the identical --flag set")
 def _():
     def flag_set(mod):
         return {opt for a in mod.build_arg_parser()._actions for opt in a.option_strings if opt.startswith("--")}
@@ -175,7 +175,7 @@ def _():
 
 
 # --------------------------------------------------------------------------- #
-# output_writer — exit codes / precedence / dedupe (CLAUDE.md §9)
+# output_writer — exit codes / precedence / dedupe
 # --------------------------------------------------------------------------- #
 @check("exit codes and STATUS_BY_EXIT match the family contract exactly")
 def _():
@@ -193,7 +193,7 @@ def _mk_product(sku, price=16.29, **kw):
     return output_writer.Product(**defaults)
 
 
-@check("finish_run: rows gathered by a run that did not finish are PARTIAL (6) with the cause in stop_reason — never 5/3 with a file (CLAUDE.md §25; audit 2026-09-30 got exit 5 AND a written file). Rewrites the old pinned 'exit 5 with products' position deliberately.")
+@check("finish_run: rows gathered by a run that did not finish are PARTIAL (6) with the cause in stop_reason — never 5/3 with a file (audit 2026-09-30 got exit 5 AND a written file). Rewrites the old pinned 'exit 5 with products' position deliberately.")
 def _():
     cases = (
         (dict(blocked=True, remote_api_error=True), "remote_api_error"),
@@ -1287,7 +1287,7 @@ def _():
     "real live crash on Roman's own machine 2026-09-29: two blocked --block-retries "
     "attempts against a real Browser API profile, then a third attempt's "
     "browser.contexts was empty and _new_context raised RuntimeError uncaught, crashing "
-    "the whole run instead of degrading that one attempt (CLAUDE.md §6)."
+    "the whole run instead of degrading that one attempt."
 )
 def _():
     import asyncio
@@ -1398,8 +1398,8 @@ def _():
     "2026-09-28 after finding this file had no equivalent: every check above drives "
     "run()/asyncio_run_maybe(mod, args) directly, bypassing main() entirely, so a duplicate "
     "'driver is None' guard placed straight in main() -- the exact bug briefly shipped in "
-    "tipranks-scraper's selenium_scraper.py/puppeteer_scraper.py on 2026-09-28, see CLAUDE.md "
-    "§6 -- would pass every other check in this file while silently short-circuiting on a "
+    "tipranks-scraper's selenium_scraper.py/puppeteer_scraper.py on 2026-09-28 -- "
+    "would pass every other check in this file while silently short-circuiting on a "
     "machine without the driver installed (this was independently confirmed NOT present here "
     "via a live run on Roman's own machine with selenium genuinely absent, but that only "
     "covered one engine, once; this check covers all three, every time this suite runs, "
@@ -1456,13 +1456,13 @@ def _():
 def _():
     # Guarded like sample_output/pyproject-changelog checks elsewhere in
     # this file: a Docker build's COPY list is a deliberately stripped-
-    # down context that never includes .github/ (CLAUDE.md §14 — the
+    # down context that never includes .github/ (the
     # image ships no test suite and no CI plumbing), so this must skip
     # rather than crash there. The offline CI job (a full checkout) is
     # what actually exercises this check.
     scanner = ROOT / ".github" / "ci_checks.py"
     if not (ROOT / ".github").is_dir():
-        return  # a Docker build context ships no .github/ at all (CLAUDE.md §22)
+        return  # a Docker build context ships no .github/ at all
     assert scanner.exists(), ".github/ exists but ci_checks.py is gone — that must fail, not skip"
     import subprocess
     import sys as _sys
@@ -1479,7 +1479,7 @@ def _():
 
     scanner = ROOT / ".github" / "ci_checks.py"
     if not (ROOT / ".github").is_dir():
-        return  # a Docker build context ships no .github/ at all (CLAUDE.md §22)
+        return  # a Docker build context ships no .github/ at all
     assert scanner.exists(), ".github/ exists but ci_checks.py is gone — that must fail, not skip"
     spec = importlib.util.spec_from_file_location("shein_ci_checks", scanner)
     module = importlib.util.module_from_spec(spec)
@@ -1871,7 +1871,7 @@ def _():
 def _():
     import re as _re
     if not (ROOT / "Dockerfile").exists() and not (ROOT / "pyproject.toml").exists():
-        return  # the Docker image's own copy of this suite ships neither (CLAUDE.md §22)
+        return  # the Docker image's own copy of this suite ships neither
     docker = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     listed = set(_re.findall(r'"([a-z_]+)"', pyproject.split("py-modules", 1)[1].split("]", 1)[0]))
@@ -1945,7 +1945,7 @@ def _():
     assert one.price == 7.0 and one.price_source == "json_ld"
 
 
-@check("JSON-LD shapes that are legal and broke the parser (CLAUDE.md §4; audit 2026-09-30): offers list/null/AggregateOffer, brand as a string, Product inside @graph, ImageObject — none crash, each reads the right value")
+@check("JSON-LD shapes that are legal and broke the parser (audit 2026-09-30): offers list/null/AggregateOffer, brand as a string, Product inside @graph, ImageObject — none crash, each reads the right value")
 def _():
     u = "https://us.shein.com/z-p-3.html"
     p = sp.parse_product_page(_ld_page({"@type": "Product", "name": "A", "offers": [None, {"price": "5", "priceCurrency": "USD"}]}), url=u)
@@ -2035,7 +2035,7 @@ def _():
     assert len(calls) == 1 and not out.passed and "refused the account" in out.detail, (len(calls), out.detail)
 
 
-@check("the credential scanner FINDS a planted key in every shape seen in the family (JSON-quoted, JSON-escaped, 32-hex next to a key word) and ignores placeholders, type hints and Python-name mappings — a scanner that cannot fail is not one (CLAUDE.md §24/§25)")
+@check("the credential scanner FINDS a planted key in every shape seen in the family (JSON-quoted, JSON-escaped, 32-hex next to a key word) and ignores placeholders, type hints and Python-name mappings — a scanner that cannot fail is not one")
 def _():
     import importlib.util
     scanner = ROOT / ".github" / "ci_checks.py"
@@ -2052,11 +2052,11 @@ def _():
         assert not mod.scan_text("ok.txt", harmless), f"false positive: {harmless!r}"
 
 
-@check("no workflow imports a local module inline — tests.yml calls ci_checks.py instead (CLAUDE.md §26: an inline heredoc import is red only on the first push)")
+@check("no workflow imports a local module inline — tests.yml calls ci_checks.py instead (an inline heredoc import is red only on the first push)")
 def _():
     import re as _re
     if not (ROOT / ".github").is_dir():
-        return  # the Docker image ships no .github/ (CLAUDE.md §22)
+        return  # the Docker image ships no .github/
     local = {p.stem for p in ROOT.glob("*.py")}
     for wf in (ROOT / ".github" / "workflows").glob("*.yml"):
         text = wf.read_text(encoding="utf-8")
@@ -2066,21 +2066,23 @@ def _():
     assert "ci_checks.py --sample-check" in (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
 
 
-@check(".gitignore covers every artefact a run writes (CLAUDE.md §22/§26): .env copies, --dump-html challenge screenshots, *.pageN dumps, live/ — while sample outputs, fixtures and .env.example stay tracked")
+@check(".gitignore covers every artefact a run writes: .env copies, --dump-html challenge screenshots, *.pageN dumps, live/ — while sample outputs, fixtures and .env.example stay tracked")
 def _():
     import subprocess as _sp
     if not (ROOT / ".git").exists():
         return
     must_ignore = [".env", ".env.bak", ".env.local", "shein_results_challenge/round1_grid.png",
-                   "out.json.page3", "live/x.html", "shein_results_debug.html", "run.json"]
-    must_keep = [".env.example", "sample_output.json", "sample_output.csv", "tests/fixtures/shein_search_live_dress_20260921.json"]
+                   "out.json.page3", "live/x.html", "shein_results_debug.html", "run.json",
+                   "captures/a.html", "dumps/a.html", "out/a.json", "runs/a.json", "tmp/a.html", "dump.html"]
+    must_keep = [".env.example", "sample_output.json", "sample_output.csv", "tests/fixtures/shein_search_live_dress_20260921.json",
+                 "landing.html", "tests/fixtures/shein_risk_challenge_real.html", ".github/canary_assert.py"]
     for path in must_ignore:
         assert _sp.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0, f"not ignored: {path}"
     for path in must_keep:
         assert _sp.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode != 0, f"wrongly ignored: {path}"
 
 
-@check("Scraping Browser connect (CLAUDE.md §26): a busy profile (HTTP 500) is retried 3x, a 401 fails at once and SAYS the endpoint expired, and a connect that never resolves (pyppeteer) is bounded — credentials never reach the message")
+@check("Scraping Browser connect: a busy profile (HTTP 500) is retried 3x, a 401 fails at once and SAYS the endpoint expired, and a connect that never resolves (pyppeteer) is bounded — credentials never reach the message")
 def _():
     sac = scraper_api_client
     sleeps = []
@@ -2123,7 +2125,7 @@ def _():
         assert "scraper_api_client.connect_with_retry(" in src, f"{mod.__name__}: connects without the shared policy"
 
 
-@check("an unreviewed product has rating=None, not 0.0 (CLAUDE.md §21/§24: zero is not a rating); a reviewed one keeps its rating")
+@check("an unreviewed product has rating=None, not 0.0 (zero is not a rating); a reviewed one keeps its rating")
 def _():
     import copy as _copy
     data = _copy.deepcopy(_real_gb())
@@ -2170,7 +2172,7 @@ def _():
 
 
 # --------------------------------------------------------------------------- #
-# page_flow — the ONE fetch loop (CLAUDE.md §26). These replace sixteen
+# page_flow — the ONE fetch loop. These replace sixteen
 # per-engine structural checks that pinned the loop's features in three
 # copies; the features now live in exactly one place, and the loop itself
 # is driven end to end below with a fake engine answering from the REAL
@@ -2181,7 +2183,7 @@ _SESSION_CLASS = {"playwright_scraper": "_PlaywrightSession", "selenium_scraper"
 _ENGINE_CLASS = {"playwright_scraper": "_PlaywrightEngine", "selenium_scraper": "_SeleniumEngine", "puppeteer_scraper": "_PyppeteerEngine"}
 
 
-@check("the fetch loop exists ONCE: no engine carries its own scrape/retry/cooldown/finish_run copy, each calls page_flow.run_browser and page_flow.run_scraper_api exactly once (CLAUDE.md §26: three copies had drifted — Playwright never detected a dead proxy)")
+@check("the fetch loop exists ONCE: no engine carries its own scrape/retry/cooldown/finish_run copy, each calls page_flow.run_browser and page_flow.run_scraper_api exactly once (three copies had drifted — Playwright never detected a dead proxy)")
 def _():
     import ast as _ast
     for mod in _ENGINES:
@@ -2196,7 +2198,7 @@ def _():
         assert mod._jittered_delay is page_flow.jittered_delay
 
 
-@check("§26 ops set, derived from page_flow's own AST (every session.<op> / engine.<op> the loop uses) — each engine's session and engine class provides all of them, so a new op cannot be added to the loop and forgotten in one engine")
+@check("shared-loop ops set, derived from page_flow's own AST (every session.<op> / engine.<op> the loop uses) — each engine's session and engine class provides all of them, so a new op cannot be added to the loop and forgotten in one engine")
 def _():
     import ast as _ast
     tree = _ast.parse((ROOT / "page_flow.py").read_text(encoding="utf-8"))
@@ -2235,7 +2237,7 @@ def _():
     assert src.count("await session.pass_risk_challenge(") == 1 and "_gateway_checks(" in src[src.index("async def fetch_product_page"):]
 
 
-@check("each engine: flags the loop reads exist with the documented defaults, autosolve is armed where the page is opened (Playwright/pyppeteer), and every generic-solve call site carries the run's budget (CLAUDE.md §23)")
+@check("each engine: flags the loop reads exist with the documented defaults, autosolve is armed where the page is opened (Playwright/pyppeteer), and every generic-solve call site carries the run's budget")
 def _():
     for mod in _ENGINES:
         a = mod.build_arg_parser().parse_args(["--query", "x"])
@@ -2329,7 +2331,7 @@ def _flow(scripts, argv=(), *, product=False, pool=None):
     return rc, meta, engine
 
 
-@check("page_flow END TO END with a fake engine on the REAL gbRawData capture (CLAUDE.md §26): a listing completes; a gateway page is blocked after exactly --block-retries+1 attempts; a passed challenge completes; a rate limit with --rate-limit-cooldown retries once and completes; a 403 is blocked; a scroll failure is partial; a product page parses its JSON-LD")
+@check("page_flow END TO END with a fake engine on the REAL gbRawData capture: a listing completes; a gateway page is blocked after exactly --block-retries+1 attempts; a passed challenge completes; a rate limit with --rate-limit-cooldown retries once and completes; a 403 is blocked; a scroll failure is partial; a product page parses its JSON-LD")
 def _():
     real = _real_gb()
     ok = {"raw": real}
@@ -2389,6 +2391,259 @@ def _():
     _flow([{"url": "https://us.shein.com/risk/challenge?captcha_type=909", "challenge_passes": True, "raw": _real_gb()}],
           ["--max-results", "5"], pool=Pool())
     assert ("fail", False) not in calls, f"a PASSED challenge must not mark the exit as failing: {calls}"
+
+
+@check("parser failure: a served listing whose gbRawData states 500 products but parses to none exits 5 with stop_reason parser_found_nothing, never 4/empty; a listing stating 0 is still a genuine empty (4)")
+def _():
+    import copy as _copy
+    broken = _copy.deepcopy(_real_gb())
+    broken["results"]["sum"] = 500
+    broken["results"]["bffProductsInfo"]["products_renamed"] = broken["results"]["bffProductsInfo"].pop("products")
+    rc, meta, _eng = _flow([{"raw": broken}], ["--block-retries", "0"])
+    assert rc == output_writer.EXIT_REMOTE_API_ERROR and meta is None, (rc, meta)
+    rc, meta, _eng = _flow([{"raw": broken}], ["--block-retries", "0", "--allow-empty"])
+    assert rc == output_writer.EXIT_REMOTE_API_ERROR and meta["stop_reason"] == "parser_found_nothing", (rc, meta)
+    empty = _copy.deepcopy(broken)
+    empty["results"]["sum"] = 0
+    rc, meta, _eng = _flow([{"raw": empty}], ["--block-retries", "0", "--allow-empty"])
+    assert rc == output_writer.EXIT_ZERO_PRODUCTS and meta["stop_reason"] == "empty", (rc, meta)
+
+
+@check("a rate-limited zero-row run records stop_reason rate_limited (not blocked) when --allow-empty writes a sidecar")
+def _():
+    with tempfile.TemporaryDirectory() as td:
+        out = str(Path(td) / "r.json")
+        code = output_writer.finish_run(products=[], out_path=out, fmt="json", engine="t", url="u", pages_requested=1,
+                                        pages_completed=0, failed_pages=None, blocked=True, remote_api_error=False,
+                                        allow_empty=True, started_at=0.0, rate_limited=True)
+        meta = json.loads(Path(out + ".meta.json").read_text())
+    assert code == output_writer.EXIT_BLOCKED and meta["stop_reason"] == "rate_limited", (code, meta)
+
+
+def _row(**kw):
+    base = dict(sku="1", source="shein.com", category="c", title="t", brand="b", price=1.0, currency="USD",
+                price_source="embedded_json", product_url="https://us.shein.com/x-p-1.html", image_url=None,
+                scraped_at="2026-10-14T00:00:00Z")
+    base.update(kw)
+    return output_writer.Product(**base)
+
+
+@check("atomic writes: a write that fails half-way leaves the previous output byte-identical and no temp file behind (json, csv and sidecar)")
+def _():
+    import os as _os
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "keep.json"
+        out.write_text('[{"good": 1}]', encoding="utf-8")
+        real_dump = output_writer.json.dump
+
+        def bad_dump(obj, f, **kw):
+            f.write('[{"partial')
+            raise OSError("disk full")
+        output_writer.json.dump = bad_dump
+        try:
+            try:
+                output_writer.write_json([_row()], str(out))
+                raise AssertionError("the injected failure did not raise")
+            except OSError:
+                pass
+        finally:
+            output_writer.json.dump = real_dump
+        assert out.read_text(encoding="utf-8") == '[{"good": 1}]', out.read_text()
+        assert sorted(_os.listdir(td)) == ["keep.json"], _os.listdir(td)
+    src = _inspect.getsource(output_writer.write_meta) + _inspect.getsource(output_writer.write_csv)
+    assert src.count("_atomic(") == 2, "write_meta and write_csv must both go through _atomic"
+
+
+@check("atomic writes keep file modes: a new file gets 0o666 & ~umask (022 and 002), an existing file keeps its own mode")
+def _():
+    import os as _os
+    with tempfile.TemporaryDirectory() as td:
+        for umask, want in ((0o022, 0o644), (0o002, 0o664), (0o077, 0o600)):
+            old = _os.umask(umask)
+            try:
+                path = Path(td) / f"m{umask:o}.csv"
+                output_writer.write_csv([_row()], str(path))
+            finally:
+                _os.umask(old)
+            got = _os.stat(path).st_mode & 0o777
+            assert got == want, f"umask {umask:o}: mode {got:o}, want {want:o}"
+        kept = Path(td) / "kept.json"
+        kept.write_text("[]")
+        _os.chmod(kept, 0o640)
+        output_writer.write_json([_row()], str(kept))
+        assert _os.stat(kept).st_mode & 0o777 == 0o640
+
+
+@check("CSV formula cells are apostrophe-escaped in CSV only; numbers stay numbers; the sidecar counts them under the caller's extra")
+def _():
+    import csv as _csv
+    rows = [_row(title="=HYPERLINK(\"x\")", brand="+cmd", category="@SUM(A1)", price=-5.0, store_code="\tx")]
+    with tempfile.TemporaryDirectory() as td:
+        out = str(Path(td) / "f.csv")
+        code = output_writer.finish_run(products=rows, out_path=out, fmt="csv", engine="t", url="u", pages_requested=1,
+                                        pages_completed=1, failed_pages=None, blocked=False, remote_api_error=False,
+                                        allow_empty=False, started_at=0.0)
+        with open(out, newline="", encoding="utf-8") as f:
+            got = next(_csv.DictReader(f))
+        meta = json.loads(Path(out + ".meta.json").read_text())
+        jout = str(Path(td) / "f.json")
+        output_writer.finish_run(products=rows, out_path=jout, fmt="json", engine="t", url="u", pages_requested=1,
+                                 pages_completed=1, failed_pages=None, blocked=False, remote_api_error=False,
+                                 allow_empty=False, started_at=0.0)
+        jrow = json.loads(Path(jout).read_text())[0]
+        out2 = str(Path(td) / "g.csv")
+        output_writer.finish_run(products=rows, out_path=out2, fmt="csv", engine="t", url="u", pages_requested=1,
+                                 pages_completed=1, failed_pages=None, blocked=False, remote_api_error=False,
+                                 allow_empty=False, started_at=0.0, extra_meta={"csv_cells_escaped": "caller"})
+        meta2 = json.loads(Path(out2 + ".meta.json").read_text())
+    assert code == 0
+    assert got["title"].startswith("'=") and got["brand"] == "'+cmd" and got["category"] == "'@SUM(A1)" and got["store_code"] == "'\tx", got
+    assert got["price"] == "-5.0", got["price"]
+    assert meta["csv_cells_escaped"] == 4, meta
+    assert jrow["title"] == "=HYPERLINK(\"x\")", "JSON must keep the site's bytes"
+    assert meta2["csv_cells_escaped"] == "caller", "the caller's extra must win over housekeeping"
+
+
+@check("every engine rejects a negative count or delay with an argparse error naming the flag, and all three use the SAME type callable per flag")
+def _():
+    import contextlib as _cl
+    import io as _io
+    mods = (playwright_scraper, selenium_scraper, puppeteer_scraper)
+    types = {}
+    for mod in mods:
+        for action in mod.build_arg_parser()._actions:
+            if action.type is not None and action.dest != "min_score":
+                types.setdefault(action.dest, set()).add(action.type)
+    assert types, "no typed flags found"
+    for dest, ts in types.items():
+        assert len(ts) == 1, f"--{dest} has different types across engines: {ts}"
+        assert next(iter(ts)) in (page_flow.positive_int, page_flow.nonnegative_int, page_flow.nonnegative_float), dest
+    for mod in mods:
+        for flag in ("--retries", "--retry-delay", "--scroll-delay", "--delay-jitter", "--rate-limit-cooldown",
+                     "--block-retries", "--risk-challenge-rounds", "--max-solves", "--proxy-block-retries",
+                     "--scraper-api-timeout"):
+            err = _io.StringIO()
+            try:
+                with _cl.redirect_stderr(err):
+                    mod.build_arg_parser().parse_args(["--query", "x", flag, "-1"])
+                raise AssertionError(f"{mod.__name__} accepted {flag} -1")
+            except SystemExit as exc:
+                assert exc.code == 2, (mod.__name__, flag, exc.code)
+            line = [l for l in err.getvalue().splitlines() if "error:" in l]
+            assert line and flag in line[0], (mod.__name__, flag, err.getvalue()[-200:])
+        assert mod.build_arg_parser().parse_args(["--query", "x", "--retries", "0"]).retries == 0
+
+
+@check("a SHEIN_URL from .env/environment does not override a typed --query or --category; it still fills --url when nothing was typed; a typed --url is kept")
+def _():
+    import os as _os
+    saved = _os.environ.get("SHEIN_URL")
+    _os.environ["SHEIN_URL"] = "https://us.shein.com/Women-Jeans-c-1934.html"
+    try:
+        for mod in (playwright_scraper, selenium_scraper, puppeteer_scraper):
+            src = _inspect.getsource(mod.main)
+            assert "prefer_typed_target(args)" in src and src.index("apply_env") < src.index("prefer_typed_target"), mod.__name__
+            args = env_config.apply_env(mod.build_arg_parser().parse_args(["--query", "dress"]), dotenv_path="/nonexistent/.env")
+            page_flow.prefer_typed_target(args)
+            url, _ = mod._resolve_start_url(args)
+            assert "dress" in url and "Jeans" not in url, url
+            args = env_config.apply_env(mod.build_arg_parser().parse_args([]), dotenv_path="/nonexistent/.env")
+            page_flow.prefer_typed_target(args)
+            assert mod._resolve_start_url(args)[0] == "https://us.shein.com/Women-Jeans-c-1934.html"
+            args = env_config.apply_env(mod.build_arg_parser().parse_args(["--url", "https://us.shein.com/x-p-1.html", "--query", "d"]),
+                                        dotenv_path="/nonexistent/.env")
+            page_flow.prefer_typed_target(args)
+            assert args.url == "https://us.shein.com/x-p-1.html"
+    finally:
+        if saved is None:
+            _os.environ.pop("SHEIN_URL", None)
+        else:
+            _os.environ["SHEIN_URL"] = saved
+
+
+@check("canary: a blocked (3), empty (4), never-obtained (5) or thin run is RED; exit 3 is excused only in the datacentre job; the live job FAILS without its secret instead of skipping")
+def _():
+    gh = ROOT / ".github"
+    if not gh.is_dir():
+        return  # the Docker image ships no .github/
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location("canary_assert", gh / "canary_assert.py")
+    ca = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(ca)
+    import contextlib as _cl
+    import io as _io
+    with tempfile.TemporaryDirectory() as td:
+        out = str(Path(td) / "c.json")
+        rows = [{"title": f"t{i}", "price": 1.0} for i in range(12)]
+        Path(out).write_text(json.dumps(rows))
+        Path(out + ".meta.json").write_text(json.dumps({"product_count": 12, "status": "complete"}))
+        with _cl.redirect_stdout(_io.StringIO()):
+            assert ca.judge(out, 0) == 0
+            for code in (1, 2, 3, 4, 5):
+                assert ca.judge(out, code) == 1, f"exit {code} passed the live canary"
+            assert ca.judge(out, 3, refusal_expected=True) == 0
+            for code in (4, 5):
+                assert ca.judge(out, code, refusal_expected=True) == 1, f"exit {code} passed the datacentre canary"
+            Path(out).write_text(json.dumps(rows[:3]))
+            assert ca.judge(out, 0) == 1, "3 rows passed"
+            Path(out).write_text(json.dumps([{"title": "t", "price": None}] * 12))
+            assert ca.judge(out, 0) == 1, "unpriced rows passed"
+    wf = (gh / "workflows" / "canary.yml").read_text(encoding="utf-8")
+    live = wf[wf.index("  canary-live:"):]
+    assert "workflow_dispatch'" not in live and "event_name" not in live, "canary-live must run on the schedule too"
+    assert "::error::canary-live needs the SHEIN_CDP_ENDPOINT" in live and "exit 1" in live
+    assert wf.count("canary_assert.py") == 2 and "--refusal-expected" not in live
+
+
+@check("diff_runs: the same rows written as JSON and as CSV compare equal (CSV text prices, empty cells and formula escapes are normalised), so --fail-on-change cannot fire on a format change")
+def _():
+    rows = [_row(sku="1", price=12.5, title="=x"), _row(sku="2", price=None, original_price=20.0)]
+    with tempfile.TemporaryDirectory() as td:
+        for name, fmt in (("a.json", "json"), ("b.csv", "csv")):
+            output_writer.finish_run(products=rows, out_path=f"{td}/{name}", fmt=fmt, engine="t",
+                                     url="https://us.shein.com/pdsearch/dress/", pages_requested=1, pages_completed=1,
+                                     failed_pages=None, blocked=False, remote_api_error=False, allow_empty=False,
+                                     started_at=0.0)
+        report = diff_runs.diff(f"{td}/a.json", f"{td}/b.csv")
+    assert not report["changed"] and not report["source_changed"] and not report["added"] and not report["removed"], report
+
+
+@check("tests.yml runs the credential scan through ci_checks.py itself, not a narrower inline grep")
+def _():
+    gh = ROOT / ".github"
+    if not gh.is_dir():
+        return  # the Docker image ships no .github/
+    wf = (gh / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    assert "run: python3 .github/ci_checks.py\n" in wf and "grep -rnE" not in wf
+
+# Tokens assembled from pieces so this file does not match itself.
+_PRIVATE_CITATION_TOKENS = ("CLAUDE" + ".md", "claude" + "_2scraper", "2scraper" + "_repo_rules", "\u00a7",
+                            "CLAUDE" + " (", "play" + "book")
+
+
+@check("no shipped file cites the maintainers' private notes (their file names or section-sign references)")
+def _():
+    import subprocess as _sp
+    try:
+        listed = _sp.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+    except (OSError, _sp.CalledProcessError):
+        listed = [str(p.relative_to(ROOT)) for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts]
+    hits = []
+    scanned = 0
+    for rel in listed:
+        path = ROOT / rel
+        if not path.is_file() or path.suffix in (".png", ".jpg", ".gz", ".ico"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        scanned += 1
+        for n, line in enumerate(text.splitlines(), 1):
+            if any(tok in line for tok in _PRIVATE_CITATION_TOKENS):
+                hits.append(f"{rel}:{n}")
+    assert scanned > 10, f"scanned only {scanned} files"
+    assert not hits, f"{len(hits)} lines cite private notes, e.g. {hits[:5]}"
 
 
 def run() -> int:

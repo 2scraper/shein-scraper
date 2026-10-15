@@ -86,11 +86,11 @@ class ScrapeResult:
 
 
 # --------------------------------------------------------------------------- #
-# Scraping Browser API connect policy — CLAUDE.md §26, measured on a sibling
+# Scraping Browser API connect policy, measured on a sibling
 # repo: a profile stays `profile_locked` for ~1.6-1.9s after a clean
 # disconnect (HTTP 500 to an immediate reconnect), pyppeteer's connect()
 # never resolves on a refused handshake, and a 401 means the endpoint's
-# credentials expired (they last about a day). Seen here too on 2026-09-30:
+# credentials were refused (expired or revoked). Seen here too on 2026-09-30:
 # a 500 on a back-to-back run, a 401 on an older profile.
 # --------------------------------------------------------------------------- #
 CDP_CONNECT_ATTEMPTS = 3
@@ -104,7 +104,7 @@ def classify_cdp_failure(message: str) -> tuple:
     text = message or ""
     if " 401" in text or "Unauthorized" in text:
         return False, ("the Scraping Browser endpoint's credentials were refused (HTTP 401) — they "
-                       "expire after about a day; get a fresh endpoint from your 2Captcha dashboard")
+                       "may have expired or been revoked; get a fresh endpoint from your 2Captcha dashboard")
     if " 500" in text or "profile_locked" in text or "timed out" in text.lower() or "Timeout" in text:
         return True, ("the Scraping Browser profile is busy or not ready (HTTP 500 / timeout) — usually "
                       "the previous session is still being released, or another run holds this pid")
@@ -145,7 +145,7 @@ class TwoCaptchaClient:
         self.timeout = timeout
         # `--captcha-api` (testing only): override the base URL so a smoke
         # test or a local run can point this at a mock server instead of
-        # the real https://api.2captcha.com. CLAUDE.md §17 names the exact
+        # the real https://api.2captcha.com. The exact
         # failure mode this guards against — a CLI flag defined on the
         # parser but never read by anything is "a documented feature not
         # working at all", found live in this family more than once.
@@ -322,8 +322,8 @@ class TwoCaptchaClient:
         # Unlike createTask/getTaskResult/getBalance above, this endpoint
         # takes its key as a URL query parameter (`?key=...`), not a JSON
         # body — and `requests` puts the FULL URL, query string included,
-        # into the text of every HTTPError and connection error (CLAUDE.md
-        # §8 names this exact endpoint). Redact before raising, and drop
+        # into the text of every HTTPError and connection error (this
+        # endpoint is one of them). Redact before raising, and drop
         # the original exception from the chain (`from None`) so its own
         # unredacted text can't surface via "the above exception was the
         # direct cause of…".

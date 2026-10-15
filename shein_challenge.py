@@ -174,7 +174,7 @@ class ChallengeDriver(Protocol):
 class SolveBudget:
     """One cap on PAID solves for a whole run, shared by every place that
     creates a 2Captcha task (this module's grid/icon rounds and the
-    engines' generic widget solver). CLAUDE.md §23: a per-pass limit that
+    engines' generic widget solver). A per-pass limit that
     nothing sums is a bill — here up to 5 rounds x 3 block-retry passes,
     plus one generic solve per scroll round. `limit=0` means no paid solve
     at all."""
@@ -374,7 +374,7 @@ async def pass_risk_challenge(
     `/risk/challenge`. Each round handles whichever solvable widget SHEIN
     is showing at that moment. Never raises for anything page- or
     solver-side: a failure comes back as `passed=False` with a `detail`,
-    and the caller keeps its normal blocked-outcome handling (CLAUDE.md §6).
+    and the caller keeps its normal blocked-outcome handling.
 
     `debug_dir`, when set, receives each round's images and the widget as
     it looked after the clicks, for checking answers by eye.

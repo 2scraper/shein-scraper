@@ -49,8 +49,31 @@ def _load_rows(run_path: str) -> List[dict]:
     if path.suffix == ".csv":
         import csv
         with path.open(newline="", encoding="utf-8") as f:
-            return list(csv.DictReader(f))
+            return [_from_csv(r) for r in csv.DictReader(f)]
     raise SystemExit(f"error: unsupported run file extension: {path.suffix}")
+
+
+_CSV_NUMERIC = ("price", "original_price", "discount_pct", "rating")
+
+
+def _from_csv(row: dict) -> dict:
+    """Read a CSV row back as the JSON writer would have written it, so a
+    JSON run and a CSV run of identical rows compare equal: an empty cell is
+    null, a numeric column is a float (CSV stores every value as text), and
+    the apostrophe the CSV writer adds to a formula-shaped cell is removed."""
+    out = {}
+    for k, v in row.items():
+        if v == "":
+            v = None
+        elif k in _CSV_NUMERIC:
+            try:
+                v = float(v)
+            except ValueError:
+                pass
+        elif isinstance(v, str) and v[:1] == "'" and v[1:2] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+            v = v[1:]
+        out[k] = v
+    return out
 
 
 def _index_by_sku(rows: List[dict]) -> Dict[str, dict]:
