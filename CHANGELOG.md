@@ -9,6 +9,8 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-16
+
 > **Behaviour changes.**
 > - A listing where SHEIN states it holds products but none could be parsed
 >   now exits **5** with `stop_reason: parser_found_nothing`. It used to
@@ -1118,7 +1120,6 @@ check 3).
 - DOM fallback selectors in `shein_parser.py` are unverified guesses,
   never needed against the real site so far.
 
-[Unreleased]: https://github.com/2scraper/shein-scraper/compare/main...HEAD
-
-[Unreleased]: https://github.com/2scraper/shein-scraper/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/2scraper/shein-scraper/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/2scraper/shein-scraper/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/2scraper/shein-scraper/releases/tag/v0.1.0

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shein-scraper"
-version = "0.1.0"
+version = "0.2.0"
 description = "shein.com fashion product scraper (Playwright, Selenium, Puppeteer, or 2Captcha's Scraping Browser API via CDP) — local-first, embedded-JSON (window.gbRawData) + JSON-LD + DOM parsing, captcha solving, proxies, fingerprints"
 readme = "README.md"
 requires-python = ">=3.9"
