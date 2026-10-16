@@ -9,6 +9,12 @@ rather than being a silent violation of that.
 
 ## [Unreleased]
 
+### Changed
+
+- CI only: the canary's paid `canary-live` job now runs weekly (Mondays 06:41
+  UTC) and on a manual dispatch; the free `canary-datacentre` job still runs
+  daily.
+
 ## [0.2.0] — 2026-10-16
 
 > **Behaviour changes.**

@@ -2,7 +2,10 @@ name: canary
 
 on:
   schedule:
-    - cron: "41 6 * * *"   # once daily; avoid :00 so it doesn't pile up with everyone else's
+    - cron: "41 6 * * *"   # daily (canary-datacentre); avoid :00 so it doesn't pile up with everyone else's
+    # Mondays only: the paid job (canary-live) runs on this
+    # schedule (each run bills); the free jobs keep the daily one above.
+    - cron: "41 6 * * 1"
   workflow_dispatch: {}     # dispatch manually at least once before trusting the badge
 
 # Two jobs, and only the second one proves the site works.
@@ -16,7 +19,8 @@ on:
 # states products and parses to none (5) all fail the job, and a served run
 # must clear the row floor.
 #
-# canary-live is the job that tests real data, every day. It runs through
+# canary-live is the job that tests real data, every Monday (weekly, because
+# each run bills a Scraping Browser session) and on dispatch. It runs through
 # a 2Captcha Scraping Browser profile (the setup the README recommends) and
 # FAILS when the SHEIN_CDP_ENDPOINT secret is missing: a skipped or blocked
 # canary is not a green one. Blocked (3), empty (4), never obtained (5) or
@@ -61,6 +65,8 @@ jobs:
 
   canary-live:
     name: canary-live (Scraping Browser, must return rows)
+    # Paid path: weekly schedule or a manual dispatch only.
+    if: github.event_name != 'schedule' || github.event.schedule == '41 6 * * 1'
     runs-on: ubuntu-latest
     env:
       HAS_CDP: ${{ secrets.SHEIN_CDP_ENDPOINT != '' }}
