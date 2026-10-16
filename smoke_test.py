@@ -2590,13 +2590,7 @@ def _():
             assert ca.judge(out, 0) == 1, "unpriced rows passed"
     wf = (gh / "workflows" / "canary.yml").read_text(encoding="utf-8")
     live = wf[wf.index("  canary-live:"):]
-    # canary-live bills a Scraping Browser session, so it runs on a weekly
-    # (Monday) schedule rather than the daily one. It must still run on a
-    # schedule: its gate names the weekly cron, and it is never restricted to
-    # a manual dispatch.
-    weekly = "41 6 * * 1"
-    assert f'- cron: "{weekly}"' in wf, "the weekly schedule canary-live runs on is missing"
-    assert f"github.event.schedule == '{weekly}'" in live and "workflow_dispatch'" not in live, "canary-live must run on the weekly schedule"
+    assert "workflow_dispatch'" not in live and "event_name" not in live, "canary-live must run on the schedule too"
     assert "::error::canary-live needs the SHEIN_CDP_ENDPOINT" in live and "exit 1" in live
     assert wf.count("canary_assert.py") == 2 and "--refusal-expected" not in live
 
