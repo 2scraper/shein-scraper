@@ -270,9 +270,9 @@ Same CLI conventions, same output contract (one row per item, JSON or CSV, a `.m
 
 - [Sleep Number scraper](https://github.com/2scraper/sleepnumber-scraper) — Smart beds, mattresses and bedding from sleepnumber.com
 - [StockX scraper](https://github.com/2scraper/stockx-scraper) — Search results, category listings and product pages
-- [TikTok Shop scraper](https://github.com/2scraper/tiktok-shop-scraper) — TikTok Shop product pages to 39 columns
+- [TikTok Shop scraper](https://github.com/2scraper/tiktok-shop-scraper) — Product pages to 39 columns
 - [Tokopedia scraper](https://github.com/2scraper/tokopedia-scraper) — IDR prices, discounts, ratings, sold counts and shops…
-- [Tractor Supply scraper](https://github.com/2scraper/tractorsupply-scraper) — Tractor Supply categories, departments and searches
+- [Tractor Supply scraper](https://github.com/2scraper/tractorsupply-scraper) — Categories, departments and searches
 - [Woolworths scraper](https://github.com/2scraper/woolworths-scraper) — Prices, unit prices, specials, health star ratings…
 
 All scrapers: [github.com/2scraper](https://github.com/2scraper) · Need another site? [Open a request](https://github.com/2scraper/.github/issues/new?title=%5BScraper%20request%5D%20)
