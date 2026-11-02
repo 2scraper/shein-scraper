@@ -1,4 +1,4 @@
-# shein-scraper
+# SHEIN Scraper — Product Listings, Prices and Ratings in Python
 
 ![release](https://img.shields.io/github/v/release/2scraper/shein-scraper?sort=semver)
 ![tests](https://github.com/2scraper/shein-scraper/actions/workflows/tests.yml/badge.svg)
@@ -6,6 +6,8 @@
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![licence](https://img.shields.io/badge/licence-MIT-green)
 ![engines](https://img.shields.io/badge/engines-Playwright%20%7C%20Selenium%20%7C%20Puppeteer-informational)
+
+**SHEIN scraper** — an open-source (MIT) Python tool that reads us.shein.com search, category and product pages and writes one row per product — title, brand, current and original price, discount, rating, review count and stock flags — to JSON or CSV. SHEIN sends suspicious visitors to its own `/risk/challenge` gate: measured on 2026-09-30 with fresh US Scraping Browser API profiles, 3 of 5 profiles passed it, each on its third round, with the puzzle solved through 2Captcha. Use it for price monitoring and catalogue research, or to compare two runs with the bundled diff tool.
 
 **Scrape SHEIN product listings into clean JSON or CSV.** Give it a search
 term, a category or a product URL; get back one row per product: title,
@@ -256,6 +258,24 @@ CI runs the offline suite on Python 3.9 and 3.12, installs the built
 wheel outside the checkout, builds the Docker image and launches Chromium
 in it, and runs each engine in its own virtualenv. `TESTING.md` describes
 live testing with real credentials; `CHANGELOG.md` has the history.
+
+## Guides
+
+- [How to scrape SHEIN: step-by-step guide](https://2captcha.com/h/how-to-scrape-shein)
+- [How to run the 2scraper scrapers: setup, proxies, exit codes and access modes](https://2captcha.com/h/how-to-run-2scraper-open-source-scrapers) — installation, `.env`, `.meta.json` for the whole family.
+
+## Related scrapers
+
+Same CLI conventions, same output contract (one row per item, JSON or CSV, a `.meta.json` sidecar and shared exit codes):
+
+- [Sleep Number scraper](https://github.com/2scraper/sleepnumber-scraper) — Smart beds, mattresses and bedding from sleepnumber.com
+- [StockX scraper](https://github.com/2scraper/stockx-scraper) — Search results, category listings and product pages
+- [TikTok Shop scraper](https://github.com/2scraper/tiktok-shop-scraper) — Product pages to 39 columns
+- [Tokopedia scraper](https://github.com/2scraper/tokopedia-scraper) — IDR prices, discounts, ratings, sold counts and shops…
+- [Tractor Supply scraper](https://github.com/2scraper/tractorsupply-scraper) — Categories, departments and searches
+- [Woolworths scraper](https://github.com/2scraper/woolworths-scraper) — Prices, unit prices, specials, health star ratings…
+
+All scrapers: [github.com/2scraper](https://github.com/2scraper) · Need another site? [Open a request](https://github.com/2scraper/.github/issues/new?title=%5BScraper%20request%5D%20)
 
 ## Licence
 
