@@ -2797,6 +2797,93 @@ def _():
     wf = (gh / "workflows" / "tests.yml").read_text(encoding="utf-8")
     assert "run: python3 .github/ci_checks.py\n" in wf and "grep -rnE" not in wf
 
+def _load_ci_checks():
+    """.github/ci_checks.py as a module, or None where it is not shipped
+    (the Docker image copies no .github/)."""
+    import importlib.util
+    scanner = ROOT / ".github" / "ci_checks.py"
+    if not scanner.exists():
+        return None
+    spec = importlib.util.spec_from_file_location("shein_ci_checks_files", scanner)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _shipped_files() -> list:
+    """The files this repo ships: `git ls-files` in a clone; in a copy with
+    no .git (a "Download ZIP" of the repo, where a user then follows README
+    Quick start and creates .venv/ and .env), every file .gitignore does not
+    exclude — the same walk the credential scanner uses. The Docker image
+    has neither .git nor .github/ nor a .gitignore, only its explicit COPY
+    list, so a plain walk minus virtualenvs and .env copies is exact there."""
+    import subprocess as _sp
+    ci = _load_ci_checks()
+    if ci is not None:
+        listed = ci._git_files()
+        return [p for p in listed if (ROOT / p).exists()] if listed is not None else ci.unignored_files()
+    try:
+        return _sp.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+    except (OSError, _sp.CalledProcessError):
+        venvs = {p.parent for p in ROOT.rglob("pyvenv.cfg")}
+        return [str(p.relative_to(ROOT)) for p in ROOT.rglob("*")
+                if p.is_file() and ".git" not in p.parts and not any(v in p.parents for v in venvs)
+                and not (p.name.startswith(".env") and p.name != ".env.example")]
+
+
+@check("README Quick start in a copy WITHOUT .git (Download ZIP) leaves the scanners green: a filled-in .env and a .venv/ are skipped, .env.example and every tracked file are still scanned, the planted credential is still FOUND outside the ignored files, and the .gitignore-aware walk lists exactly what `git ls-files` does in a clone")
+def _():
+    import shutil
+    import subprocess as _sp
+    ci = _load_ci_checks()
+    if ci is None:
+        return  # the Docker image ships no .github/
+    rules = ci.gitignore_rules()
+    if not rules:
+        return  # no .gitignore in this copy
+    for rel, is_dir, ignored in [
+        (".env", False, True), (".env.local", False, True), (".env.example", False, False),
+        (".venv", True, True), (".venv-puppeteer", True, True), ("venv", True, True),
+        ("sample_output.json", False, False), ("shein_results.json", False, True),
+        ("tests/fixtures/x.json", False, False), ("landing.html", False, False), ("page.html", False, True),
+        ("smoke_test.py", False, False), ("tests/fixtures", True, False),
+    ]:
+        assert ci.is_gitignored(rel, rules, is_dir=is_dir) is ignored, (rel, ignored)
+
+    listed = ci._git_files()
+    if listed is not None:  # a real clone: the fallback walk must agree with git exactly
+        walk = set(ci.unignored_files())
+        assert walk == set(listed), f"walk vs git: only walk {sorted(walk - set(listed))[:5]}, only git {sorted(set(listed) - walk)[:5]}"
+
+    login, secret = "k7f3q9" + "zone", "Zq81mW" + "v4tR"  # not placeholder-shaped: the scanner WOULD flag them
+    with tempfile.TemporaryDirectory() as td:
+        copy = Path(td) / "shein-scraper-main"
+        copy.mkdir()
+        for rel in ([".gitignore", ".env.example", "README.md", "smoke_test.py"]):
+            shutil.copy2(ROOT / rel, copy / rel)
+        (copy / ".github").mkdir()
+        shutil.copy2(ROOT / ".github" / "ci_checks.py", copy / ".github" / "ci_checks.py")
+        (copy / ".env").write_text(f"SHEIN_CDP_ENDPOINT=ws://{login}:{secret}@cb.2captcha.com:9222\n")
+        site = copy / ".venv" / "lib" / "python3" / "site-packages" / "pkg"
+        site.mkdir(parents=True)
+        (copy / ".venv" / "pyvenv.cfg").write_text("home = /usr/bin\n")
+        (site / "core.py").write_text("# see \u00a7 4.2 of the play" "book; ws://" + login + ":" + secret + "@cb.2captcha.com/\n")
+        files = _sp.run([__import__("sys").executable, "-c",
+                         "import sys; sys.path.insert(0, '.github'); import ci_checks; print('\\n'.join(ci_checks.repository_files()))"],
+                        cwd=copy, capture_output=True, text=True, timeout=30)
+        assert files.returncode == 0, files.stderr
+        names = set(files.stdout.split())
+        assert ".env.example" in names and "README.md" in names and ".github/ci_checks.py" in names, names
+        assert not any(n == ".env" or n.startswith(".venv/") for n in names), names
+        assert ci.scan_text(".env", (copy / ".env").read_text()), "the planted .env must be credential-shaped, or skipping it proves nothing"
+        clean = _sp.run([__import__("sys").executable, ".github/ci_checks.py"], cwd=copy, capture_output=True, text=True, timeout=30)
+        assert clean.returncode == 0, f"scanner flagged an ignored file:\n{clean.stdout}{clean.stderr}"
+        assert secret not in clean.stdout + clean.stderr
+        (copy / "notes.md").write_text(f"endpoint ws://{login}:{secret}@cb.2captcha.com:9222\n")
+        dirty = _sp.run([__import__("sys").executable, ".github/ci_checks.py"], cwd=copy, capture_output=True, text=True, timeout=30)
+        assert dirty.returncode == 1 and "notes.md" in dirty.stdout, "a credential in a non-ignored file must still fail the scan"
+
+
 # Tokens assembled from pieces so this file does not match itself.
 _PRIVATE_CITATION_TOKENS = ("CLAUDE" + ".md", "claude" + "_2scraper", "2scraper" + "_repo_rules", "\u00a7",
                             "CLAUDE" + " (", "play" + "book")
@@ -2804,11 +2891,7 @@ _PRIVATE_CITATION_TOKENS = ("CLAUDE" + ".md", "claude" + "_2scraper", "2scraper"
 
 @check("no shipped file cites the maintainers' private notes (their file names or section-sign references)")
 def _():
-    import subprocess as _sp
-    try:
-        listed = _sp.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
-    except (OSError, _sp.CalledProcessError):
-        listed = [str(p.relative_to(ROOT)) for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts]
+    listed = _shipped_files()
     hits = []
     scanned = 0
     for rel in listed:

@@ -18,6 +18,7 @@ rather than being a silent violation of that.
 
 - A `--cdp-endpoint` run whose Scraping Browser session the provider closed during `--rate-limit-cooldown` (or between block retries) crashed with exit 1 ("Unhandled error"): Playwright's `TargetClosedError` and pyppeteer's builtin `ConnectionError` are not `RuntimeError`, the only error the shared loop catches around opening a page. Both engines now report it as exit 5, `stop_reason: remote_api_error`, with the endpoint's credentials redacted. When the driver sees the connection drop, the engine reconnects to the endpoint once before the retry instead of retrying in a dead browser.
 - `.env.example` said solving SHEIN's `/risk/challenge` was "opt-in, never automatic". With `TWOCAPTCHA_KEY` set it is automatic (`--solve-captcha` defaults to `when-blocked`), capped by `--max-solves`; the comment now says so and how to turn it off. It also pointed to a README section ("Local-first") that no longer exists.
+- Development: in a copy of the repo without `.git` (GitHub's "Download ZIP"), following README Quick start (`.venv/` plus a filled-in `.env`) made two smoke checks fail: the credential scanner flagged the local `.env`, and the private-notes check read `.venv/…/site-packages`. Without git, both scanners now walk the tree honouring `.gitignore`, which gives the same file list as `git ls-files` in a clone. `.env.example` and every tracked file are still scanned.
 
 ## [0.2.0] — 2026-10-16
 
