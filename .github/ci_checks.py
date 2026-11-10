@@ -17,6 +17,7 @@ skimming a diff would.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -90,24 +91,127 @@ def _in_virtualenv(relative: str) -> bool:
     return False
 
 
-def repository_files() -> list[str]:
-    """`git ls-files` when ROOT is a real git working tree (true in CI's
-    `actions/checkout`, and in any real clone) — a plain filesystem walk
-    as a fallback otherwise (a file-only sync of this repo with no .git
-    directory, or an extracted release tarball), so the scanner works
-    either way rather than crashing when .git is absent."""
+def _glob_to_regex(glob: str) -> str:
+    """One .gitignore glob as a regex over a slash-separated relative
+    path: `*`/`?` stay inside one path segment, `**` crosses segments."""
+    out, i = [], 0
+    while i < len(glob):
+        c = glob[i]
+        if glob.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+            continue
+        if glob.startswith("**", i):
+            out.append(".*")
+            i += 2
+            continue
+        if c == "*":
+            out.append("[^/]*")
+        elif c == "?":
+            out.append("[^/]")
+        elif c == "[":
+            end = glob.find("]", i + 1)
+            if end == -1:
+                out.append(re.escape(c))
+            else:
+                body = glob[i + 1:end]
+                out.append("[" + ("^" + body[1:] if body.startswith("!") else body) + "]")
+                i = end
+        elif c == "\\" and i + 1 < len(glob):
+            i += 1
+            out.append(re.escape(glob[i]))
+        else:
+            out.append(re.escape(c))
+        i += 1
+    return "".join(out)
+
+
+def gitignore_rules(root: Path = ROOT) -> list[tuple[re.Pattern, bool, bool, bool]]:
+    """The root .gitignore as (regex, negated, dir_only, anchored) rules, in
+    file order. Empty when there is no .gitignore (the Docker image)."""
     try:
+        lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rules = []
+    for line in lines:
+        line = line.rstrip()
+        if not line or line.startswith("#"):
+            continue
+        negated = line.startswith("!")
+        pattern = line[1:] if negated else line
+        dir_only = pattern.endswith("/")
+        pattern = pattern.rstrip("/")
+        anchored = "/" in pattern
+        pattern = pattern.lstrip("/")
+        if pattern:
+            rules.append((re.compile(_glob_to_regex(pattern) + r"\Z"), negated, dir_only, anchored))
+    return rules
+
+
+def is_gitignored(relative: str, rules, *, is_dir: bool = False) -> bool:
+    """git's own semantics for the subset this repo uses: the LAST matching
+    rule wins, a `dir/` rule matches only directories, a pattern without a
+    slash matches a name at any depth, and nothing below an ignored
+    directory can be re-included."""
+    parts = relative.split("/")
+    for depth in range(1, len(parts) + 1):
+        here_is_dir = is_dir or depth < len(parts)
+        path, name = "/".join(parts[:depth]), parts[depth - 1]
+        ignored = False
+        for regex, negated, dir_only, anchored in rules:
+            if dir_only and not here_is_dir:
+                continue
+            if regex.match(path if anchored else name):
+                ignored = not negated
+        if ignored:
+            return True
+    return False
+
+
+def unignored_files(root: Path = ROOT) -> list[str]:
+    """Every file under `root` that .gitignore does not exclude: the
+    non-git stand-in for `git ls-files --cached --others --exclude-standard`
+    (a GitHub "Download ZIP" copy or a release tarball has no .git, yet
+    is exactly where a user follows README Quick start and creates .venv/
+    and a filled-in .env). Ignored directories are pruned, not walked."""
+    rules = gitignore_rules(root)
+    found = []
+    for current, dirs, files in os.walk(root):
+        base = Path(current).relative_to(root).as_posix()
+        prefix = "" if base == "." else base + "/"
+        dirs[:] = sorted(d for d in dirs if d != ".git" and not is_gitignored(prefix + d, rules, is_dir=True))
+        found.extend(prefix + f for f in sorted(files) if not is_gitignored(prefix + f, rules))
+    return found
+
+
+def _git_files() -> list[str] | None:
+    """`git ls-files` (tracked + untracked-but-not-ignored) when ROOT is the
+    top of a real git working tree, else None. A copy extracted INSIDE some
+    other repository is not one: that repo's listing is not this one's."""
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=ROOT, check=True,
+                             capture_output=True, text=True).stdout.strip()
+        if not top or Path(top).resolve() != ROOT:
+            return None
         result = subprocess.run(
             ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
             cwd=ROOT, check=True, capture_output=True,
         )
-        paths = [p.decode("utf-8", "surrogateescape") for p in result.stdout.split(b"\0") if p]
     except (subprocess.CalledProcessError, FileNotFoundError):
-        paths = [
-            str(p.relative_to(ROOT))
-            for p in ROOT.rglob("*")
-            if p.is_file()
-        ]
+        return None
+    return [p.decode("utf-8", "surrogateescape") for p in result.stdout.split(b"\0") if p]
+
+
+def repository_files() -> list[str]:
+    """`git ls-files` when ROOT is a real git working tree (true in CI's
+    `actions/checkout`, and in any real clone) — otherwise a filesystem
+    walk that honours .gitignore (see unignored_files), so a local .env and
+    a virtualenv are skipped either way while .env.example and every
+    shipped file are still scanned."""
+    paths = _git_files()
+    if paths is None:
+        paths = unignored_files()
     return [p for p in paths if not _NOT_SOURCE_DIR.search(p) and not _in_virtualenv(p)]
 
 

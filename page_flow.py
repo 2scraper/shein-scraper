@@ -130,7 +130,11 @@ async def _open_and_navigate(engine: Engine, args, start_url: str, proxy_pool: O
     try:
         session = await engine.open(proxy)
     except RuntimeError as exc:
-        log.error("Browser connection failed — treating as remote_api_error, not a crash: %s", exc)
+        # Engines translate their driver's own errors into RuntimeError
+        # (see Engine.open); redacted again here, so an engine that forgot
+        # still cannot print a CDP endpoint's login:password.
+        log.error("Browser connection failed — treating as remote_api_error, not a crash: %s",
+                  redact_credentials(str(exc)))
         return None, None, proxy
     last_error = None
     status = None

@@ -2409,6 +2409,187 @@ def _():
     assert rc == output_writer.EXIT_ZERO_PRODUCTS and meta["stop_reason"] == "empty", (rc, meta)
 
 
+_CDP_SECRET = "s3cret" + "pw"  # assembled so the credential scanner never sees a literal
+_CDP_ENDPOINT = f"ws://user-zone-scraping_browser:{_CDP_SECRET}@cb.example.invalid:9222"
+_LD_PAGE = ('<script type="application/ld+json">' + json.dumps({"@type": "ProductGroup", "name": "P", "hasVariant": [
+    {"@type": "Product", "offers": {"price": "12", "priceCurrency": "USD"}}]}) + "</script>")
+
+
+class _CdpScript:
+    """Shared state for the fake CDP browsers below: the first page lands
+    on SHEIN's rate limit; after --rate-limit-cooldown the provider has
+    closed the profile's session. `disconnects` = whether the driver
+    noticed (is_connected() False / a 'disconnected' event) — then the
+    engine must reconnect; otherwise the next page open raises."""
+
+    def __init__(self, *, disconnects: bool, error: BaseException):
+        self.disconnects, self.error = disconnects, error
+        self.opens, self.connects, self.dead, self.listeners = 0, 0, False, []
+
+    def page_url(self) -> str:
+        return "https://us.shein.com/risk/action/limit?x=1" if self.opens == 1 else "https://us.shein.com/x-p-1.html"
+
+    def kill(self) -> None:
+        self.dead = True
+        if self.disconnects:
+            for cb in self.listeners:  # pyppeteer emits 'disconnected' when the websocket goes away
+                cb()
+
+
+class _FakePwPage:
+    def __init__(self, s):
+        self.s, self.url = s, s.page_url()
+
+    async def goto(self, url, **kw):
+        return type("R", (), {"status": 200})()
+
+    async def wait_for_timeout(self, ms):
+        return None
+
+    async def content(self):
+        return _LD_PAGE
+
+    async def evaluate(self, js):
+        return None
+
+    async def close(self):
+        self.s.kill()  # the provider recycles the profile during the cooldown that follows
+
+
+class _FakePwContext:
+    def __init__(self, s):
+        self.s = s
+
+    async def new_page(self):
+        self.s.opens += 1
+        return _FakePwPage(self.s)
+
+
+class _FakePwBrowser:
+    def __init__(self, s):
+        self.s, self.alive = s, True
+
+    def is_connected(self):
+        return self.alive and not (self.s.dead and self.s.disconnects)
+
+    @property
+    def contexts(self):
+        return [] if self.s.dead else [_FakePwContext(self.s)]
+
+    async def new_context(self, **kw):
+        raise self.s.error  # what TargetClosedError looked like live, 2026-11-10
+
+    async def close(self):
+        self.alive = False
+
+
+class _FakePyppPage:
+    def __init__(self, s):
+        self.s, self.url = s, s.page_url()
+
+    async def goto(self, url, opts=None):
+        return type("R", (), {"status": 200})()
+
+    async def content(self):
+        return _LD_PAGE
+
+    async def evaluate(self, js):
+        return None
+
+    async def close(self):
+        self.s.kill()
+
+
+class _FakePyppBrowser:
+    def __init__(self, s):
+        self.s = s
+
+    def on(self, event, cb):
+        if event == "disconnected":
+            self.s.listeners.append(cb)
+
+    async def newPage(self):
+        if self.s.dead:
+            raise self.s.error
+        self.s.opens += 1
+        return _FakePyppPage(self.s)
+
+    async def disconnect(self):
+        return None
+
+
+def _run_cdp_cooldown(engine: str, *, disconnects: bool):
+    """The 2026-11-10 crash, offline: `--url <product> --rate-limit-cooldown`
+    over --cdp-endpoint, the first page rate-limited, the profile's session
+    closed by the provider during the wait. Returns (rc, meta, script, log)."""
+    import logging as _logging
+    if engine == "playwright":
+        try:
+            from playwright._impl._errors import TargetClosedError as _Closed
+        except ImportError:  # no playwright installed: any playwright.Error subclass shape will do
+            class _Closed(playwright_scraper.PlaywrightError):
+                pass
+        error = _Closed(f"BrowserContext.new_context: Target page, context or browser has been closed ({_CDP_ENDPOINT})")
+    else:
+        error = ConnectionError(f"Connection is closed ({_CDP_ENDPOINT})")  # pyppeteer's Connection.send(): the BUILTIN one
+    s = _CdpScript(disconnects=disconnects, error=error)
+    mod = playwright_scraper if engine == "playwright" else puppeteer_scraper
+    saved = {n: getattr(mod, n) for n in ("async_playwright", "_connect_over_cdp", "pyppeteer_launch", "_launch") if hasattr(mod, n)}
+
+    class _Pw:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def connect(*_a, **_kw):
+        s.connects += 1
+        s.dead, s.listeners = False, []  # a fresh connection gets a working session again
+        return _FakePwBrowser(s) if engine == "playwright" else _FakePyppBrowser(s)
+
+    records = []
+    handler = _logging.Handler()
+    handler.emit = lambda r: records.append(r.getMessage())
+    root = _logging.getLogger()
+    root.addHandler(handler)
+    try:
+        if engine == "playwright":
+            mod.async_playwright, mod._connect_over_cdp = (lambda: _Pw()), connect
+        else:
+            mod.pyppeteer_launch, mod._launch = object(), connect
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "o.json")
+            args = mod.build_arg_parser().parse_args([
+                "--url", "https://us.shein.com/x-p-1.html", "--cdp-endpoint", _CDP_ENDPOINT,
+                "--rate-limit-cooldown", "0.001", "--delay-jitter", "0", "--solve-captcha", "off",
+                "--allow-empty", "--out", out,
+            ])
+            rc = asyncio_run_maybe(mod, args)
+            meta_path = Path(out + ".meta.json")
+            meta = json.loads(meta_path.read_text()) if meta_path.exists() else None
+    finally:
+        root.removeHandler(handler)
+        for name, value in saved.items():
+            setattr(mod, name, value)
+    return rc, meta, s, "\n".join(records)
+
+
+@check("a CDP session the provider closes during --rate-limit-cooldown ends as exit 5 / stop_reason remote_api_error (Playwright TargetClosedError, pyppeteer's builtin ConnectionError — neither is a RuntimeError, so the run used to crash with exit 1), never prints the endpoint's password, and a session the driver SEES disconnect is reconnected once and completes")
+def _():
+    for engine in ("playwright", "puppeteer"):
+        rc, meta, s, logs = _run_cdp_cooldown(engine, disconnects=False)
+        assert rc == output_writer.EXIT_REMOTE_API_ERROR, f"{engine}: expected exit 5, got {rc}\n{logs[-600:]}"
+        assert meta and meta["stop_reason"] == "remote_api_error", (engine, meta)
+        assert "Unhandled error" not in logs, f"{engine}: still reached the crash handler"
+        assert "unusable" in logs and _CDP_SECRET not in logs, f"{engine}: error missing or not redacted:\n{logs[-600:]}"
+
+        rc, meta, s, logs = _run_cdp_cooldown(engine, disconnects=True)
+        assert rc == output_writer.EXIT_OK and meta["product_count"] == 1, f"{engine}: reconnect path got {rc}\n{logs[-600:]}"
+        assert s.connects == 2 and s.opens == 2, (engine, s.connects, s.opens)
+        assert _CDP_SECRET not in logs, engine
+
+
 @check("a rate-limited zero-row run records stop_reason rate_limited (not blocked) when --allow-empty writes a sidecar")
 def _():
     with tempfile.TemporaryDirectory() as td:
@@ -2616,6 +2797,93 @@ def _():
     wf = (gh / "workflows" / "tests.yml").read_text(encoding="utf-8")
     assert "run: python3 .github/ci_checks.py\n" in wf and "grep -rnE" not in wf
 
+def _load_ci_checks():
+    """.github/ci_checks.py as a module, or None where it is not shipped
+    (the Docker image copies no .github/)."""
+    import importlib.util
+    scanner = ROOT / ".github" / "ci_checks.py"
+    if not scanner.exists():
+        return None
+    spec = importlib.util.spec_from_file_location("shein_ci_checks_files", scanner)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _shipped_files() -> list:
+    """The files this repo ships: `git ls-files` in a clone; in a copy with
+    no .git (a "Download ZIP" of the repo, where a user then follows README
+    Quick start and creates .venv/ and .env), every file .gitignore does not
+    exclude — the same walk the credential scanner uses. The Docker image
+    has neither .git nor .github/ nor a .gitignore, only its explicit COPY
+    list, so a plain walk minus virtualenvs and .env copies is exact there."""
+    import subprocess as _sp
+    ci = _load_ci_checks()
+    if ci is not None:
+        listed = ci._git_files()
+        return [p for p in listed if (ROOT / p).exists()] if listed is not None else ci.unignored_files()
+    try:
+        return _sp.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+    except (OSError, _sp.CalledProcessError):
+        venvs = {p.parent for p in ROOT.rglob("pyvenv.cfg")}
+        return [str(p.relative_to(ROOT)) for p in ROOT.rglob("*")
+                if p.is_file() and ".git" not in p.parts and not any(v in p.parents for v in venvs)
+                and not (p.name.startswith(".env") and p.name != ".env.example")]
+
+
+@check("README Quick start in a copy WITHOUT .git (Download ZIP) leaves the scanners green: a filled-in .env and a .venv/ are skipped, .env.example and every tracked file are still scanned, the planted credential is still FOUND outside the ignored files, and the .gitignore-aware walk lists exactly what `git ls-files` does in a clone")
+def _():
+    import shutil
+    import subprocess as _sp
+    ci = _load_ci_checks()
+    if ci is None:
+        return  # the Docker image ships no .github/
+    rules = ci.gitignore_rules()
+    if not rules:
+        return  # no .gitignore in this copy
+    for rel, is_dir, ignored in [
+        (".env", False, True), (".env.local", False, True), (".env.example", False, False),
+        (".venv", True, True), (".venv-puppeteer", True, True), ("venv", True, True),
+        ("sample_output.json", False, False), ("shein_results.json", False, True),
+        ("tests/fixtures/x.json", False, False), ("landing.html", False, False), ("page.html", False, True),
+        ("smoke_test.py", False, False), ("tests/fixtures", True, False),
+    ]:
+        assert ci.is_gitignored(rel, rules, is_dir=is_dir) is ignored, (rel, ignored)
+
+    listed = ci._git_files()
+    if listed is not None:  # a real clone: the fallback walk must agree with git exactly
+        walk = set(ci.unignored_files())
+        assert walk == set(listed), f"walk vs git: only walk {sorted(walk - set(listed))[:5]}, only git {sorted(set(listed) - walk)[:5]}"
+
+    login, secret = "k7f3q9" + "zone", "Zq81mW" + "v4tR"  # not placeholder-shaped: the scanner WOULD flag them
+    with tempfile.TemporaryDirectory() as td:
+        copy = Path(td) / "shein-scraper-main"
+        copy.mkdir()
+        for rel in ([".gitignore", ".env.example", "README.md", "smoke_test.py"]):
+            shutil.copy2(ROOT / rel, copy / rel)
+        (copy / ".github").mkdir()
+        shutil.copy2(ROOT / ".github" / "ci_checks.py", copy / ".github" / "ci_checks.py")
+        (copy / ".env").write_text(f"SHEIN_CDP_ENDPOINT=ws://{login}:{secret}@cb.2captcha.com:9222\n")
+        site = copy / ".venv" / "lib" / "python3" / "site-packages" / "pkg"
+        site.mkdir(parents=True)
+        (copy / ".venv" / "pyvenv.cfg").write_text("home = /usr/bin\n")
+        (site / "core.py").write_text("# see \u00a7 4.2 of the play" "book; ws://" + login + ":" + secret + "@cb.2captcha.com/\n")
+        files = _sp.run([__import__("sys").executable, "-c",
+                         "import sys; sys.path.insert(0, '.github'); import ci_checks; print('\\n'.join(ci_checks.repository_files()))"],
+                        cwd=copy, capture_output=True, text=True, timeout=30)
+        assert files.returncode == 0, files.stderr
+        names = set(files.stdout.split())
+        assert ".env.example" in names and "README.md" in names and ".github/ci_checks.py" in names, names
+        assert not any(n == ".env" or n.startswith(".venv/") for n in names), names
+        assert ci.scan_text(".env", (copy / ".env").read_text()), "the planted .env must be credential-shaped, or skipping it proves nothing"
+        clean = _sp.run([__import__("sys").executable, ".github/ci_checks.py"], cwd=copy, capture_output=True, text=True, timeout=30)
+        assert clean.returncode == 0, f"scanner flagged an ignored file:\n{clean.stdout}{clean.stderr}"
+        assert secret not in clean.stdout + clean.stderr
+        (copy / "notes.md").write_text(f"endpoint ws://{login}:{secret}@cb.2captcha.com:9222\n")
+        dirty = _sp.run([__import__("sys").executable, ".github/ci_checks.py"], cwd=copy, capture_output=True, text=True, timeout=30)
+        assert dirty.returncode == 1 and "notes.md" in dirty.stdout, "a credential in a non-ignored file must still fail the scan"
+
+
 # Tokens assembled from pieces so this file does not match itself.
 _PRIVATE_CITATION_TOKENS = ("CLAUDE" + ".md", "claude" + "_2scraper", "2scraper" + "_repo_rules", "\u00a7",
                             "CLAUDE" + " (", "play" + "book")
@@ -2623,11 +2891,7 @@ _PRIVATE_CITATION_TOKENS = ("CLAUDE" + ".md", "claude" + "_2scraper", "2scraper"
 
 @check("no shipped file cites the maintainers' private notes (their file names or section-sign references)")
 def _():
-    import subprocess as _sp
-    try:
-        listed = _sp.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
-    except (OSError, _sp.CalledProcessError):
-        listed = [str(p.relative_to(ROOT)) for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts]
+    listed = _shipped_files()
     hits = []
     scanned = 0
     for rel in listed:
