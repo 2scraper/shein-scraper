@@ -43,9 +43,13 @@ from typing import Optional
 
 try:
     from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+    from playwright.async_api import Error as PlaywrightError
 except ImportError as _IMPORT_ERROR:  # pragma: no cover — exercised by smoke_test's no-engine path
     Browser = BrowserContext = Page = None
     async_playwright = None
+
+    class PlaywrightError(Exception):  # never raised: keeps `except PlaywrightError` valid without playwright
+        pass
     _PLAYWRIGHT_IMPORT_ERROR = _IMPORT_ERROR
 else:
     _PLAYWRIGHT_IMPORT_ERROR = None
@@ -431,16 +435,38 @@ class _PlaywrightEngine:
     name = ENGINE_NAME
     readiness_s = READINESS_WAIT_MS / 1000
 
-    def __init__(self, browser: Browser, args: argparse.Namespace, *, autosolve: bool, user_agent: Optional[str]):
+    def __init__(self, browser: Browser, args: argparse.Namespace, *, autosolve: bool, user_agent: Optional[str],
+                 reconnect=None):
         self.browser, self.args, self.autosolve, self.user_agent = browser, args, autosolve, user_agent
+        # Over --cdp-endpoint: an awaitable factory for a fresh connection.
+        # Called only once the old one is gone (a provider closing the
+        # profile's session during a long --rate-limit-cooldown or block
+        # retry), never per attempt: a second live connection to the same
+        # profile hits the provider's profile lock.
+        self.reconnect = reconnect
 
     async def open(self, proxy) -> _PlaywrightSession:
-        reuse_default = bool(self.args.cdp_endpoint)
-        context = await _new_context(self.browser, proxy, self.user_agent, reuse_default=reuse_default)
-        page = await context.new_page()
-        if self.autosolve:
-            await _enable_scraping_browser_auto_solve(context, page)
-        return _PlaywrightSession(page, context, reuse_default=reuse_default, args=self.args)
+        """Raises RuntimeError (page_flow's "the browser itself failed"
+        contract → remote_api_error, exit 5) for any Playwright failure
+        here, e.g. TargetClosedError from new_context() on a CDP session
+        the provider closed — never the raw driver error, which page_flow
+        does not catch (exit 1) and whose text can carry the endpoint's
+        login:password."""
+        try:
+            if self.reconnect is not None and not self.browser.is_connected():
+                log.warning("The CDP browser disconnected (the provider closed this profile's session) — reconnecting.")
+                self.browser = await self.reconnect()  # RuntimeError, already redacted, on failure
+            reuse_default = bool(self.args.cdp_endpoint)
+            context = await _new_context(self.browser, proxy, self.user_agent, reuse_default=reuse_default)
+            page = await context.new_page()
+            if self.autosolve:
+                await _enable_scraping_browser_auto_solve(context, page)
+            return _PlaywrightSession(page, context, reuse_default=reuse_default, args=self.args)
+        except PlaywrightError as exc:
+            detail = redact_credentials(str(exc)).splitlines()[0] if str(exc) else ""
+            raise RuntimeError(
+                f"browser session unusable, could not open a page ({type(exc).__name__}: {detail})"
+            ) from None
 
     async def sleep(self, seconds: float) -> None:
         await asyncio.sleep(seconds)
@@ -513,12 +539,13 @@ async def run(args: argparse.Namespace) -> int:
             else:
                 browser = await pw.chromium.launch(headless=args.headless)
             engine = _PlaywrightEngine(browser, args, autosolve=bool(args.cdp_endpoint) and args.solve_captcha != "off",
-                                       user_agent=user_agent)
+                                       user_agent=user_agent,
+                                       reconnect=(lambda: _connect_over_cdp(pw, args.cdp_endpoint)) if args.cdp_endpoint else None)
             try:
                 return await page_flow.run_browser(engine, args, start_url=start_url, is_product_page=is_product_page,
                                                    proxy_pool=proxy_pool, client=client, started_at=started_at)
             finally:
-                await browser.close()
+                await engine.browser.close()  # the reconnected one, if open() had to reconnect
     except Exception:
         log.exception("Unhandled error — this is a crash, not a normal blocked/empty run")
         return EXIT_CRASH

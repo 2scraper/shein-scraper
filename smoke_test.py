@@ -2409,6 +2409,187 @@ def _():
     assert rc == output_writer.EXIT_ZERO_PRODUCTS and meta["stop_reason"] == "empty", (rc, meta)
 
 
+_CDP_SECRET = "s3cret" + "pw"  # assembled so the credential scanner never sees a literal
+_CDP_ENDPOINT = f"ws://user-zone-scraping_browser:{_CDP_SECRET}@cb.example.invalid:9222"
+_LD_PAGE = ('<script type="application/ld+json">' + json.dumps({"@type": "ProductGroup", "name": "P", "hasVariant": [
+    {"@type": "Product", "offers": {"price": "12", "priceCurrency": "USD"}}]}) + "</script>")
+
+
+class _CdpScript:
+    """Shared state for the fake CDP browsers below: the first page lands
+    on SHEIN's rate limit; after --rate-limit-cooldown the provider has
+    closed the profile's session. `disconnects` = whether the driver
+    noticed (is_connected() False / a 'disconnected' event) — then the
+    engine must reconnect; otherwise the next page open raises."""
+
+    def __init__(self, *, disconnects: bool, error: BaseException):
+        self.disconnects, self.error = disconnects, error
+        self.opens, self.connects, self.dead, self.listeners = 0, 0, False, []
+
+    def page_url(self) -> str:
+        return "https://us.shein.com/risk/action/limit?x=1" if self.opens == 1 else "https://us.shein.com/x-p-1.html"
+
+    def kill(self) -> None:
+        self.dead = True
+        if self.disconnects:
+            for cb in self.listeners:  # pyppeteer emits 'disconnected' when the websocket goes away
+                cb()
+
+
+class _FakePwPage:
+    def __init__(self, s):
+        self.s, self.url = s, s.page_url()
+
+    async def goto(self, url, **kw):
+        return type("R", (), {"status": 200})()
+
+    async def wait_for_timeout(self, ms):
+        return None
+
+    async def content(self):
+        return _LD_PAGE
+
+    async def evaluate(self, js):
+        return None
+
+    async def close(self):
+        self.s.kill()  # the provider recycles the profile during the cooldown that follows
+
+
+class _FakePwContext:
+    def __init__(self, s):
+        self.s = s
+
+    async def new_page(self):
+        self.s.opens += 1
+        return _FakePwPage(self.s)
+
+
+class _FakePwBrowser:
+    def __init__(self, s):
+        self.s, self.alive = s, True
+
+    def is_connected(self):
+        return self.alive and not (self.s.dead and self.s.disconnects)
+
+    @property
+    def contexts(self):
+        return [] if self.s.dead else [_FakePwContext(self.s)]
+
+    async def new_context(self, **kw):
+        raise self.s.error  # what TargetClosedError looked like live, 2026-11-10
+
+    async def close(self):
+        self.alive = False
+
+
+class _FakePyppPage:
+    def __init__(self, s):
+        self.s, self.url = s, s.page_url()
+
+    async def goto(self, url, opts=None):
+        return type("R", (), {"status": 200})()
+
+    async def content(self):
+        return _LD_PAGE
+
+    async def evaluate(self, js):
+        return None
+
+    async def close(self):
+        self.s.kill()
+
+
+class _FakePyppBrowser:
+    def __init__(self, s):
+        self.s = s
+
+    def on(self, event, cb):
+        if event == "disconnected":
+            self.s.listeners.append(cb)
+
+    async def newPage(self):
+        if self.s.dead:
+            raise self.s.error
+        self.s.opens += 1
+        return _FakePyppPage(self.s)
+
+    async def disconnect(self):
+        return None
+
+
+def _run_cdp_cooldown(engine: str, *, disconnects: bool):
+    """The 2026-11-10 crash, offline: `--url <product> --rate-limit-cooldown`
+    over --cdp-endpoint, the first page rate-limited, the profile's session
+    closed by the provider during the wait. Returns (rc, meta, script, log)."""
+    import logging as _logging
+    if engine == "playwright":
+        try:
+            from playwright._impl._errors import TargetClosedError as _Closed
+        except ImportError:  # no playwright installed: any playwright.Error subclass shape will do
+            class _Closed(playwright_scraper.PlaywrightError):
+                pass
+        error = _Closed(f"BrowserContext.new_context: Target page, context or browser has been closed ({_CDP_ENDPOINT})")
+    else:
+        error = ConnectionError(f"Connection is closed ({_CDP_ENDPOINT})")  # pyppeteer's Connection.send(): the BUILTIN one
+    s = _CdpScript(disconnects=disconnects, error=error)
+    mod = playwright_scraper if engine == "playwright" else puppeteer_scraper
+    saved = {n: getattr(mod, n) for n in ("async_playwright", "_connect_over_cdp", "pyppeteer_launch", "_launch") if hasattr(mod, n)}
+
+    class _Pw:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def connect(*_a, **_kw):
+        s.connects += 1
+        s.dead, s.listeners = False, []  # a fresh connection gets a working session again
+        return _FakePwBrowser(s) if engine == "playwright" else _FakePyppBrowser(s)
+
+    records = []
+    handler = _logging.Handler()
+    handler.emit = lambda r: records.append(r.getMessage())
+    root = _logging.getLogger()
+    root.addHandler(handler)
+    try:
+        if engine == "playwright":
+            mod.async_playwright, mod._connect_over_cdp = (lambda: _Pw()), connect
+        else:
+            mod.pyppeteer_launch, mod._launch = object(), connect
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "o.json")
+            args = mod.build_arg_parser().parse_args([
+                "--url", "https://us.shein.com/x-p-1.html", "--cdp-endpoint", _CDP_ENDPOINT,
+                "--rate-limit-cooldown", "0.001", "--delay-jitter", "0", "--solve-captcha", "off",
+                "--allow-empty", "--out", out,
+            ])
+            rc = asyncio_run_maybe(mod, args)
+            meta_path = Path(out + ".meta.json")
+            meta = json.loads(meta_path.read_text()) if meta_path.exists() else None
+    finally:
+        root.removeHandler(handler)
+        for name, value in saved.items():
+            setattr(mod, name, value)
+    return rc, meta, s, "\n".join(records)
+
+
+@check("a CDP session the provider closes during --rate-limit-cooldown ends as exit 5 / stop_reason remote_api_error (Playwright TargetClosedError, pyppeteer's builtin ConnectionError — neither is a RuntimeError, so the run used to crash with exit 1), never prints the endpoint's password, and a session the driver SEES disconnect is reconnected once and completes")
+def _():
+    for engine in ("playwright", "puppeteer"):
+        rc, meta, s, logs = _run_cdp_cooldown(engine, disconnects=False)
+        assert rc == output_writer.EXIT_REMOTE_API_ERROR, f"{engine}: expected exit 5, got {rc}\n{logs[-600:]}"
+        assert meta and meta["stop_reason"] == "remote_api_error", (engine, meta)
+        assert "Unhandled error" not in logs, f"{engine}: still reached the crash handler"
+        assert "unusable" in logs and _CDP_SECRET not in logs, f"{engine}: error missing or not redacted:\n{logs[-600:]}"
+
+        rc, meta, s, logs = _run_cdp_cooldown(engine, disconnects=True)
+        assert rc == output_writer.EXIT_OK and meta["product_count"] == 1, f"{engine}: reconnect path got {rc}\n{logs[-600:]}"
+        assert s.connects == 2 and s.opens == 2, (engine, s.connects, s.opens)
+        assert _CDP_SECRET not in logs, engine
+
+
 @check("a rate-limited zero-row run records stop_reason rate_limited (not blocked) when --allow-empty writes a sidecar")
 def _():
     with tempfile.TemporaryDirectory() as td:

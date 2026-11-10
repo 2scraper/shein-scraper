@@ -36,13 +36,29 @@ try:
     from pyppeteer import connect as pyppeteer_connect
     from pyppeteer import launch as pyppeteer_launch
     from pyppeteer.errors import NetworkError, PageError, TimeoutError as PyppeteerTimeoutError
+    from pyppeteer.errors import PyppeteerError
 except ImportError as _IMPORT_ERROR:  # pragma: no cover — exercised by smoke_test's no-engine path
     pyppeteer_launch = None
     pyppeteer_connect = None
     NetworkError = PageError = PyppeteerTimeoutError = Exception
+
+    class PyppeteerError(Exception):  # never raised: keeps _OPEN_ERRORS narrow without pyppeteer
+        pass
     _PYPPETEER_IMPORT_ERROR = _IMPORT_ERROR
 else:
     _PYPPETEER_IMPORT_ERROR = None
+try:
+    from websockets.exceptions import ConnectionClosed as _WebSocketClosed
+except ImportError:  # pragma: no cover — pyppeteer itself depends on websockets
+    class _WebSocketClosed(Exception):
+        pass
+
+# What a dead or refusing browser raises out of _PyppeteerEngine.open():
+# pyppeteer's own errors, the BUILTIN ConnectionError its Connection.send()
+# raises once the websocket is gone ("Connection is closed"), and a raw
+# websockets close. None of these is a RuntimeError, so page_flow (which
+# catches only RuntimeError around engine.open()) used to crash with exit 1.
+_OPEN_ERRORS = (PyppeteerError, asyncio.TimeoutError, ConnectionError, _WebSocketClosed)  # pyppeteer's TimeoutError is an asyncio.TimeoutError
 
 import env_config
 import scraper_api_client
@@ -372,18 +388,47 @@ class _PyppeteerEngine:
     name = ENGINE_NAME
     readiness_s = READINESS_WAIT_S
 
-    def __init__(self, args: argparse.Namespace, *, remote_browser, autosolve: bool, user_agent: Optional[str]):
+    def __init__(self, args: argparse.Namespace, *, remote_browser, autosolve: bool, user_agent: Optional[str],
+                 reconnect=None):
         self.args, self.remote_browser, self.autosolve, self.user_agent = args, remote_browser, autosolve, user_agent
+        # Over --cdp-endpoint: an awaitable factory for a fresh connection,
+        # used only after the run's ONE connection has dropped (see run():
+        # a second live connection to the profile hits the profile lock).
+        self.reconnect = reconnect
+        self._disconnected = False
+        self._watch(remote_browser)
+
+    def _watch(self, browser) -> None:
+        if browser is not None and self.reconnect is not None:
+            self._disconnected = False
+            browser.on("disconnected", self._on_disconnected)
+
+    def _on_disconnected(self, *_):
+        self._disconnected = True
 
     async def open(self, proxy) -> _PyppeteerSession:
-        browser = self.remote_browser or await _launch(headless=self.args.headless, proxy=proxy, cdp_endpoint=None)
-        page = await browser.newPage()
-        if self.user_agent:
-            await page.setUserAgent(self.user_agent)
-        await _authenticate_if_needed(page, proxy)
-        if self.autosolve:
-            await _enable_scraping_browser_auto_solve(page)
-        return _PyppeteerSession(page, browser, owns_browser=self.remote_browser is None, args=self.args)
+        """Raises RuntimeError (page_flow's "the browser itself failed"
+        contract → remote_api_error, exit 5) for a dead or refusing browser
+        — never the raw driver error (exit 1, and its text can carry the
+        endpoint's login:password)."""
+        try:
+            if self.remote_browser is not None and self._disconnected:
+                log.warning("The CDP browser disconnected (the provider closed this profile's session) — reconnecting.")
+                self.remote_browser = await self.reconnect()  # RuntimeError, already redacted, on failure
+                self._watch(self.remote_browser)
+            browser = self.remote_browser or await _launch(headless=self.args.headless, proxy=proxy, cdp_endpoint=None)
+            page = await browser.newPage()
+            if self.user_agent:
+                await page.setUserAgent(self.user_agent)
+            await _authenticate_if_needed(page, proxy)
+            if self.autosolve:
+                await _enable_scraping_browser_auto_solve(page)
+            return _PyppeteerSession(page, browser, owns_browser=self.remote_browser is None, args=self.args)
+        except _OPEN_ERRORS as exc:
+            detail = redact_credentials(str(exc)).splitlines()[0] if str(exc) else ""
+            raise RuntimeError(
+                f"browser session unusable, could not open a page ({type(exc).__name__}: {detail})"
+            ) from None
 
     async def sleep(self, seconds: float) -> None:
         await asyncio.sleep(seconds)
@@ -459,6 +504,7 @@ async def run(args: argparse.Namespace) -> int:
                 user_agent = user_agent_from(profile)
 
     remote_browser = None
+    engine = None
     try:
         if args.cdp_endpoint:
             # ONE connection for the whole run: reconnecting per block retry
@@ -470,14 +516,20 @@ async def run(args: argparse.Namespace) -> int:
                 return page_flow.finish(args, merged=[], blocked=False, remote_api_error=True,
                                         engine_name=ENGINE_NAME, start_url=start_url, started_at=started_at,
                                         pages_requested=args.max_scrolls, pages_completed=1, failed_pages=None)
-        engine = _PyppeteerEngine(args, remote_browser=remote_browser,
-                                  autosolve=bool(args.cdp_endpoint) and args.solve_captcha != "off", user_agent=user_agent)
+        engine = _PyppeteerEngine(
+            args, remote_browser=remote_browser,
+            autosolve=bool(args.cdp_endpoint) and args.solve_captcha != "off", user_agent=user_agent,
+            reconnect=(lambda: _launch(headless=args.headless, proxy=None, cdp_endpoint=args.cdp_endpoint))
+            if args.cdp_endpoint else None,
+        )
         return await page_flow.run_browser(engine, args, start_url=start_url, is_product_page=is_product_page,
                                            proxy_pool=proxy_pool, client=client, started_at=started_at)
     except Exception:
         log.exception("Unhandled error — this is a crash, not a normal blocked/empty run")
         return EXIT_CRASH
     finally:
+        if engine is not None:
+            remote_browser = engine.remote_browser  # the reconnected one, if open() had to reconnect
         if remote_browser is not None:
             # disconnect(), never close(): close() ends the remote Browser
             # API session itself (found on perplexity-scraper, same driver).
