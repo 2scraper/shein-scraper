@@ -31,54 +31,9 @@ It is built for price monitoring and catalogue research on
   shared scraping loop, a local browser or 2Captcha's **Scraping Browser
   API** over CDP, rotating proxies, and a run-to-run diff tool.
 
-## Quick start
+## Example output
 
-```bash
-git clone https://github.com/2scraper/shein-scraper.git
-cd shein-scraper
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-playwright.txt
-playwright install chromium
-cp .env.example .env        # add your keys here, never on the command line
-
-python3 playwright_scraper.py --query "summer dress" --max-results 20
-```
-
-Results land in `shein_results.json`, with `shein_results.json.meta.json`
-beside it.
-
-**Recommended setup for regular use:** a 2Captcha Scraping Browser API
-profile in `SHEIN_CDP_ENDPOINT` and a key in `TWOCAPTCHA_KEY`. SHEIN
-challenges or rate-limits plain local browsers quickly; a Scraping
-Browser profile that has passed the challenge once keeps its cookies and
-usually scrapes without further challenges.
-
-## Examples
-
-```bash
-# a search
-python3 playwright_scraper.py --query "linen pants" --max-results 60
-
-# a category, as it appears in shein.com's own URLs
-python3 playwright_scraper.py --category "Women Jeans-c-1934.html" --format csv --out jeans.csv
-
-# a single product page (read from its JSON-LD)
-python3 playwright_scraper.py --url "https://us.shein.com/dsbayvkj-p-33704388.html"
-
-# through the Scraping Browser API (endpoint taken from SHEIN_CDP_ENDPOINT in .env)
-python3 playwright_scraper.py --query "summer dress" --max-results 20
-
-# the same with the other engines
-python3 puppeteer_scraper.py --query "summer dress"
-python3 selenium_scraper.py  --query "summer dress"      # local browser only, see "Engines"
-
-# compare two runs of the same search
-python3 diff_runs.py monday.json tuesday.json
-```
-
-## Sample output
-
-A real row from a run on 2026-09-30 (`sample_output.json` has three):
+A real row from a run on 2026-09-30, every column in the output's order:
 
 ```json
 {
@@ -104,6 +59,9 @@ A real row from a run on 2026-09-30 (`sample_output.json` has three):
 }
 ```
 
+Full sample: [`sample_output.json`](sample_output.json) · 3 rows, collected
+2026-09-30 (a listing run; all three in «Women Mini Dresses»).
+
 | Field | Meaning |
 |---|---|
 | `sku` | SHEIN's `goods_id`, the same across a product's colours and sizes |
@@ -114,6 +72,126 @@ A real row from a run on 2026-09-30 (`sample_output.json` has three):
 | `rating` / `review_count` | average rating and number of reviews; `rating` is `null` when there are no reviews |
 | `store_code` | the seller's store id |
 | `in_stock`, `is_clearance`, `quickship` | SHEIN's own flags |
+
+## Requirements and access
+
+| | |
+|---|---|
+| Runtime | Python 3.9 or newer (the offline suite runs on 3.9 and 3.12 in CI); Playwright with its Chromium (recommended), pyppeteer, or Selenium (local Chrome only), one per virtualenv |
+| Coverage | us.shein.com (prices in USD): searches, categories and product pages; listings from the page's embedded product data, product pages from their JSON-LD. Other SHEIN country sites are not tested. See [Coverage and limitations](#coverage-and-limitations) |
+| Required for the documented scenario | Nothing to start: the Quick start runs a local headless Chromium with no key or proxy. But SHEIN sends such clients to its `/risk` gateway often — a datacentre address was rate-limited on 2026-11-18 — so for regular use the README recommends a **2Captcha Scraping Browser API** profile (`SHEIN_CDP_ENDPOINT`) and a **2Captcha key** (`TWOCAPTCHA_KEY`) |
+| Optional: 2Captcha Scraping Browser API | A profile that has passed SHEIN's challenge keeps its cookies; 3 of 5 fresh US profiles passed on 2026-09-30, each on its third round |
+| Optional: captcha solving | The image grid and the icon-order puzzle are solved through 2Captcha; capped at `--max-solves` per run (default 8, `0` never pays); the "I am human" checkbox is clicked for free |
+| Optional: proxies, fingerprint, Scraper API | `SHEIN_PROXY` / `--proxy-file` for a local browser; `--fingerprint` applies a 2Captcha Fingerprint API user agent; `--scraper-api` fetches one page without a browser |
+| Measured | Challenge pass rate: 2026-09-30; a datacentre run without a key or proxy: 2026-11-18 at `fcfd0e6` (rate-limited, exit 3). See [Verification](#verification) |
+
+## Quick start
+
+```bash
+git clone https://github.com/2scraper/shein-scraper.git
+cd shein-scraper
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-playwright.txt
+playwright install chromium
+cp .env.example .env        # add your keys here, never on the command line
+
+python3 playwright_scraper.py --query "summer dress" --max-results 20
+```
+
+Results land in `shein_results.json`, with `shein_results.json.meta.json`
+beside it.
+
+**Recommended setup for regular use:** a 2Captcha Scraping Browser API
+profile in `SHEIN_CDP_ENDPOINT` and a key in `TWOCAPTCHA_KEY`. SHEIN
+challenges or rate-limits plain local browsers quickly; a Scraping
+Browser profile that has passed the challenge once keeps its cookies and
+usually scrapes without further challenges.
+
+If the run does not end with exit 0:
+
+* **exit 3, blocked or rate-limited** — SHEIN sent the browser to its
+  `/risk` gateway. A rate limit (`/risk/action/limit`) has nothing to solve:
+  wait at least five minutes, or pass `--rate-limit-cooldown 300`. A
+  challenge (`/risk/challenge`) needs a 2Captcha key and usually a Scraping
+  Browser profile. See [Getting past SHEIN's bot check](#getting-past-sheins-bot-check).
+* **exit 4, no products** — the page loaded but had none: check the query or
+  category.
+* **exit 5 or 6, not obtained or partial** — 5: a remote service failed, the
+  page never loaded, or SHEIN said products exist and none could be parsed;
+  6: rows were written but `stop_reason` says why the run did not finish.
+  See [Run results and exit codes](#run-results-and-exit-codes).
+
+Setup, `.env` and exit codes for the whole family:
+[How to run the 2scraper scrapers](https://2captcha.com/h/how-to-run-2scraper-open-source-scrapers).
+
+## Coverage and limitations
+
+The short version: us.shein.com only; one infinitely-scrolling listing per
+run, verified up to about 20 products; `--sort` is recorded but not sent;
+the bot check is not always solvable.
+
+### Known limitations
+
+
+- **us.shein.com only.** Other SHEIN country sites use different
+  locales and have not been tested.
+- **Listings beyond the first ~20 products are unverified.** The page
+  embeds its first batch of about 20 products, and every live run so far
+  asked for 20 or fewer. The scraper scrolls for more and stops when
+  nothing new appears, but whether scrolling actually loads further
+  products has not been confirmed. The run warns, and reports `partial`,
+  when it collects fewer than SHEIN says exist.
+- **`--sort` is not sent to SHEIN yet.** Its URL parameter has not been
+  confirmed.
+- **Profiles wear out.** A Scraping Browser endpoint's credentials
+  eventually stop working; how long they last has not been measured for
+  this repo, so treat an HTTP 401 (reported with a clear message) as the
+  signal to fetch a fresh endpoint. After roughly
+  ten runs in a row a profile may be rate-limited for a few minutes.
+- **The bot check is not always solvable** — see above.
+
+## Examples
+
+- [How to scrape SHEIN: step-by-step guide](https://2captcha.com/h/how-to-scrape-shein)
+- [SHEIN scraper on 2scraper.com](https://2scraper.com/scrapers/shein-scraper/) — what it collects, requirements and related scrapers on one page.
+- [How to run the 2scraper scrapers: setup, proxies, exit codes and access modes](https://2captcha.com/h/how-to-run-2scraper-open-source-scrapers) — installation, `.env`, `.meta.json` for the whole family.
+
+
+```bash
+# a search
+python3 playwright_scraper.py --query "linen pants" --max-results 60
+
+# a category, as it appears in shein.com's own URLs
+python3 playwright_scraper.py --category "Women Jeans-c-1934.html" --format csv --out jeans.csv
+
+# a single product page (read from its JSON-LD)
+python3 playwright_scraper.py --url "https://us.shein.com/dsbayvkj-p-33704388.html"
+
+# through the Scraping Browser API (endpoint taken from SHEIN_CDP_ENDPOINT in .env)
+python3 playwright_scraper.py --query "summer dress" --max-results 20
+
+# the same with the other engines
+python3 puppeteer_scraper.py --query "summer dress"
+python3 selenium_scraper.py  --query "summer dress"      # local browser only, see "Engines"
+
+# compare two runs of the same search
+python3 diff_runs.py monday.json tuesday.json
+```
+
+## Verification
+
+The dependable path needs a paid Scraping Browser API profile and a 2Captcha
+key, so it was **not re-run in this pass**; the last dated measurement of it
+is from 2026-09-30, below.
+
+| Date, commit | Check | Conditions | Result |
+|---|---|---|---|
+| 2026-11-18, `fcfd0e6` | Quick start install | a fresh virtualenv, Python 3.13, `requirements-playwright.txt` (Playwright 1.65.2) | installs; every flag used in the Quick start and Examples is in `--help` |
+| 2026-11-18, `fcfd0e6` | Quick start command with `--max-solves 0` | local headless Chromium, no proxy, no key, no `.env`, one Hetzner datacentre address | redirected to SHEIN's `/risk/action/limit` rate-limit gateway, exit 3, nothing written, no solve bought |
+| 2026-11-18, `fcfd0e6` | Offline suite | `python3 smoke_test.py` (108/108) and `python3 .github/ci_checks.py`, core requirements only | passed |
+| 2026-09-30 | SHEIN's challenge | fresh US Scraping Browser API profiles, puzzles solved through 2Captcha | 3 of 5 profiles passed, each on its third round; the other two were refused on every answer. `sample_output.json` is from that day |
+| 2026-10-19 to 2026-11-16 | [Canary](https://github.com/2scraper/shein-scraper/actions/workflows/canary.yml), weekly: `canary-live` | must return rows over the Scraping Browser API | failing since 2026-10-19 because the `SHEIN_CDP_ENDPOINT` repository secret is not set, so it tests nothing about the site; last green run 2026-10-16 |
+| 2026-10-19 to 2026-11-16 | the same, `canary-datacentre` | a GitHub runner, no proxy, no key | refused through the `/risk` gateway (exit 3) on 2026-10-19, 10-26, 11-02 and 11-09; served on 2026-11-16 (15 rows, `complete`, exit 0) |
 
 ## Getting past SHEIN's bot check
 
@@ -228,25 +306,6 @@ on results, exit codes and when money is spent. Docker:
 `docker build -t shein-scraper .` gives an image with Playwright and
 Chromium.
 
-## Known limitations
-
-- **us.shein.com only.** Other SHEIN country sites use different
-  locales and have not been tested.
-- **Listings beyond the first ~20 products are unverified.** The page
-  embeds its first batch of about 20 products, and every live run so far
-  asked for 20 or fewer. The scraper scrolls for more and stops when
-  nothing new appears, but whether scrolling actually loads further
-  products has not been confirmed. The run warns, and reports `partial`,
-  when it collects fewer than SHEIN says exist.
-- **`--sort` is not sent to SHEIN yet.** Its URL parameter has not been
-  confirmed.
-- **Profiles wear out.** A Scraping Browser endpoint's credentials
-  eventually stop working; how long they last has not been measured for
-  this repo, so treat an HTTP 401 (reported with a clear message) as the
-  signal to fetch a fresh endpoint. After roughly
-  ten runs in a row a profile may be rate-limited for a few minutes.
-- **The bot check is not always solvable** — see above.
-
 ## Development
 
 ```bash
@@ -259,10 +318,64 @@ wheel outside the checkout, builds the Docker image and launches Chromium
 in it, and runs each engine in its own virtualenv. `TESTING.md` describes
 live testing with real credentials; `CHANGELOG.md` has the history.
 
-## Guides
+## FAQ
 
-- [How to scrape SHEIN: step-by-step guide](https://2captcha.com/h/how-to-scrape-shein)
-- [How to run the 2scraper scrapers: setup, proxies, exit codes and access modes](https://2captcha.com/h/how-to-run-2scraper-open-source-scrapers) — installation, `.env`, `.meta.json` for the whole family.
+### Does SHEIN have a public API?
+
+This repository does not use one. It reads what us.shein.com's own pages
+carry: listings from the page's embedded product data (`window.gbRawData`),
+product pages from their schema.org JSON-LD, so prices and ids are the
+site's own values.
+
+### Is it legal to scrape us.shein.com?
+
+This is not legal advice. Scraping public pages is permitted in many
+jurisdictions, but SHEIN's terms of use, copyright in product texts and
+images, and data-protection law differ between countries. The output is
+product and price data from public pages, and the scraper does not log in.
+Keep the request rate low — SHEIN rate-limits fast clients — and do not
+collect personal data without a lawful basis.
+
+### Why does SHEIN block headless browsers or datacentre IPs?
+
+SHEIN sends suspicious visitors to its own `/risk` gateway: a challenge to
+solve, or a rate limit to wait out. It does not publish what it scores.
+Measured: a Hetzner datacentre address was rate-limited on 2026-11-18; a
+GitHub runner was refused four weeks running and served on the fifth
+(2026-11-16). A Scraping Browser profile that has passed the challenge keeps
+its cookies, and 3 of 5 fresh US profiles passed it on 2026-09-30.
+
+### How do I run the SHEIN scraper on a server?
+
+Put a Scraping Browser API endpoint in `SHEIN_CDP_ENDPOINT` and a key in
+`TWOCAPTCHA_KEY` in `.env`, then run the Quick start command; headless is
+the default and no display is needed. `docker build -t shein-scraper .`
+gives an image with Playwright and Chromium. Cap paid solves with
+`--max-solves`, and branch on the exit code and on `status` in the
+`.meta.json`.
+
+### What fields does the scraper return?
+
+19 columns per product, in the same order in JSON and CSV: `sku`, `source`,
+`category`, `title`, `brand`, `price`, `currency`, `price_source`,
+`product_url`, `image_url`, `scraped_at`, `original_price`, `discount_pct`,
+`rating`, `review_count`, `store_code`, `in_stock`, `is_clearance`,
+`quickship`. The table under [Example output](#example-output) explains them.
+
+### Can it scrape other SHEIN country sites?
+
+Not as tested: this repository reads us.shein.com. Other SHEIN country
+sites use different locales and have not been tested.
+
+### How often does it break when SHEIN changes?
+
+A weekly canary is meant to check that SHEIN still serves rows over the
+Scraping Browser API, but that job has had no endpoint secret since
+2026-10-19 (see [Verification](#verification)), so it is not watching the
+site right now. When SHEIN states that a listing holds products and none can
+be parsed — the page layout has probably changed — the run ends with exit 5
+and `stop_reason: parser_found_nothing`, not as an empty result. Fixes are recorded in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Related scrapers
 
